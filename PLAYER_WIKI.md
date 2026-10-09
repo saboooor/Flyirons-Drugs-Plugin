@@ -292,3 +292,15 @@ Players who plan logistics outperform players who only chase short-term buffs.
 - Build team logistics around supply + cure reliability.
 
 If you play this system like a long-term strategy game, you’ll consistently outperform players who play it like a one-click buff plugin.
+
+## Growing before crafting
+
+Use `/drugs growing` to see how to obtain each crop's seeds. Combine wheat seeds with
+the listed starter, then right click hydrated farmland to plant. Keep it watered and
+lit and wait until the wheat-shaped crop is fully grown. Harvesting early returns only
+the seed; mature crops yield two special ingredients plus a reusable seed. Bone meal
+cannot skip the wait. Use `/drugs` to view recipes with the required harvested items.
+
+For cannabis, grow a fern into a large fern and harvest it with shears. Use the Cannabis
+Buds for crafting or loading bongs, and replant the strain ferns. Ordinary ferns and
+planting stock cannot replace buds in recipes.

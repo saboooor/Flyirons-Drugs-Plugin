@@ -254,3 +254,38 @@ If PlaceholderAPI is installed, this plugin registers `%drugs_...%` placeholders
 
 - Original base plugin: **Norses Drugs**
 - Fork + continued systems work/balance: **Flyiron**
+
+## Growing crafting ingredients
+
+Drug recipes require custom harvested ingredients. Ordinary flowers, minerals, vines,
+ferns, and planting stock cannot substitute for a harvest, including in automatic crafters.
+Existing `recipes.yml` files receive the requirement at registration, without being overwritten.
+Use `/drugs growing` for instructions or click a drug in `/drugs` to view its current recipe.
+
+Craft one crop seed by combining wheat seeds with the starter below (shapeless).
+Right click hydrated farmland to plant. These crops look like wheat and advance through
+visible growth stages; growth pauses in unloaded chunks, dry soil, or light below 9.
+Break a fully mature crop to receive two harvested ingredients and one reusable seed.
+Breaking early returns only its seed. Bone meal cannot skip growing.
+
+| Crop | Starter | Used for | Default growth time |
+| --- | --- | --- | --- |
+| Poppy | Poppy | Heroin, fent | 10 minutes |
+| Mushroom | Red mushroom | Shrooms | 8 minutes |
+| Ephedra | Quartz | Meth | 15 minutes |
+| Coca | Vine | Cocaine | 15 minutes |
+| Sassafras | Magenta dye | Molly | 15 minutes |
+| Ergot | Spore blossom | LSD | 20 minutes |
+| Salvia | Fern | Salvia | 10 minutes |
+| Resin | Bone meal | Glue | 10 minutes |
+
+Cannabis uses the existing fern growing system: plant a fern, wait for a large fern,
+and harvest with shears. Mature plants yield two Cannabis Buds plus strain planting
+stock. Joint, blunt, edible, cart, and CBD recipes require buds, and bongs accept buds.
+Strain inheritance and mutations remain supported. Farm workers replant planting stock
+and deliver the harvested buds at their controller.
+
+Ingredient crop progress is saved in `ingredient_plants.yml` on planting, harvesting,
+every minute, and shutdown. Configure crop durations in `growing.yml`; `/drugs reload`
+applies changes. Cannabis uses the average growth time in `mechanics.yml`.
+Finished items remain available through the existing admin give command.

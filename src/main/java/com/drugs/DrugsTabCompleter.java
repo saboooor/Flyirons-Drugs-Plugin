@@ -20,6 +20,7 @@ public class DrugsTabCompleter implements TabCompleter {
 
             options.add("give");
             options.add("help");
+            options.add("growing");
             options.add("list");
             options.add("purge");
             options.add("reload");

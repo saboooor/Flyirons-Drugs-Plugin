@@ -1,0 +1,18 @@
+# Active growth time in seconds. Crops pause in unloaded chunks, darkness,
+# or dry farmland. Bone meal does not accelerate these ingredient crops.
+poppy:
+  growth-seconds: 600
+mushroom:
+  growth-seconds: 480
+ephedra:
+  growth-seconds: 900
+coca:
+  growth-seconds: 900
+sassafras:
+  growth-seconds: 900
+ergot:
+  growth-seconds: 1200
+salvia:
+  growth-seconds: 600
+resin:
+  growth-seconds: 600

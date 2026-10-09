@@ -27,12 +27,14 @@ public class DrugMenuListener implements Listener {
         ItemStack clicked = event.getCurrentItem();
         Player player = (Player) event.getWhoClicked();
 
-        if (inv == null || clicked == null || clicked.getType() == Material.AIR) return;
+        if (inv == null) return;
 
         String title = ChatColor.stripColor(event.getView().getTitle());
         if (!title.startsWith("Drugs Menu") && !title.startsWith("Recipe: ")) return;
 
         event.setCancelled(true); // Fully prevent item movement/dragging
+
+        if (clicked == null || clicked.getType() == Material.AIR || event.getRawSlot() >= inv.getSize()) return;
 
         // Only handle logic for drug menu clicks
         if (!title.startsWith("Drugs Menu")) return;
@@ -71,6 +73,12 @@ public class DrugMenuListener implements Listener {
                 }
             }
         }
+    }
+
+    @EventHandler
+    public void onMenuDrag(org.bukkit.event.inventory.InventoryDragEvent event) {
+        String title = ChatColor.stripColor(event.getView().getTitle());
+        if (title.startsWith("Drugs Menu") || title.startsWith("Recipe: ")) event.setCancelled(true);
     }
 
     /**

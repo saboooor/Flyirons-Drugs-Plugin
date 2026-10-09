@@ -73,6 +73,23 @@ public class DrugRecipeHelper {
             }
         }
 
+        String crop = DrugGrowing.requirement(id);
+        if (crop != null) {
+            // Replace the first configured ingredient with the harvested crop when an old recipe
+            // has no matching material (for example custom recipes on an existing server).
+            char required = 0;
+            for (String symbol : ingredients.getKeys(false)) {
+                if (shape.stream().noneMatch(row -> row.indexOf(symbol.charAt(0)) >= 0)) continue;
+                if (required == 0) required = symbol.charAt(0);
+                if (Material.matchMaterial(ingredients.getString(symbol)) == DrugGrowing.material(crop)) {
+                    required = symbol.charAt(0);
+                    break;
+                }
+            }
+            if (required == 0) return;
+            recipe.setIngredient(required, DrugGrowing.material(crop));
+        }
+        Bukkit.removeRecipe(key);
         Bukkit.addRecipe(recipe);
     }
 }

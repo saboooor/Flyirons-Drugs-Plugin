@@ -93,7 +93,11 @@ public class WeedFarmWorkerService implements Runnable {
                 if (worker != null) {
                     CannabisPlantListener.HarvestResult result = CannabisPlantListener.harvestCannabis(block, true);
                     if (result != null) {
-                        workerSeeds.addAll(result.getDrops());
+                        for (ItemStack drop : result.getDrops()) {
+                            if (drop.getType() == Material.FERN && drop.hasItemMeta()
+                                && "cannabis_plant".equals(com.drugs.DrugItemMetadata.getItemType(drop.getItemMeta()))) workerSeeds.add(drop);
+                            else world.dropItemNaturally(farm.getControllerLocation(), drop);
+                        }
                         consumeQuota(workerHarvestQuota, worker.getUniqueId());
                         harvests++;
                         moveWorker(worker, result.getRootBlock().getLocation().add(0.5, 0, 0.5));

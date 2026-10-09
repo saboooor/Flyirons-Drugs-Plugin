@@ -27,12 +27,12 @@ public class CannabisPlantListener implements Listener {
         plugin.getServer().getScheduler().runTaskTimer(plugin, this::tickAutoGrowth, 20L, 20L);
     }
 
-    @EventHandler
+    @EventHandler(priority = org.bukkit.event.EventPriority.MONITOR, ignoreCancelled = true)
     public void onPlace(BlockPlaceEvent event) {
         applyPlacedCannabis(event.getBlockPlaced(), event.getItemInHand());
     }
 
-    @EventHandler
+    @EventHandler(priority = org.bukkit.event.EventPriority.HIGHEST, ignoreCancelled = true)
     public void onBreak(BlockBreakEvent event) {
         HarvestResult result = harvestCannabis(event.getBlock(), event.getPlayer() != null
                 && event.getPlayer().getInventory().getItemInMainHand().getType() == Material.SHEARS);
@@ -57,7 +57,10 @@ public class CannabisPlantListener implements Listener {
         String parentStrain = CannabisPlantRegistry.getPlant(block.getLocation());
         if (parentStrain == null) return;
 
-        // Keep strain anchored at bottom block after bonemeal growth into large fern.
+        // Cannabis must grow over time; bone meal cannot skip maturity.
+        event.setCancelled(true);
+
+        // Keep strain anchored at bottom block.
         CannabisPlantRegistry.setPlant(block.getLocation(), parentStrain);
     }
 
@@ -94,12 +97,16 @@ public class CannabisPlantListener implements Listener {
         List<ItemStack> drops = new ArrayList<>();
         if (usingShears) {
             int dropAmount = rootBlock.getType() == Material.LARGE_FERN ? 2 : 1;
-            String childStrain = StrainConfigLoader.rollChildStrain(parentStrain);
+            String childStrain = rootBlock.getType() == Material.LARGE_FERN
+                    ? StrainConfigLoader.rollChildStrain(parentStrain) : parentStrain;
             for (int i = 0; i < dropAmount; i++) {
                 drops.add(createStrainFern(childStrain));
             }
         }
 
+        if (rootBlock.getType() == Material.LARGE_FERN && usingShears) {
+            drops.add(DrugGrowing.harvest("cannabis", parentStrain).asQuantity(2));
+        }
         clearFernPlant(rootBlock);
         CannabisPlantRegistry.removePlant(rootBlock.getLocation());
         return new HarvestResult(rootBlock, drops);
@@ -115,6 +122,7 @@ public class CannabisPlantListener implements Listener {
         double growthChance = Math.min(1.0D, 1.0D / growthSeconds);
 
         for (org.bukkit.Location location : plants.keySet()) {
+            if (!location.getWorld().isChunkLoaded(location.getBlockX() >> 4, location.getBlockZ() >> 4)) continue;
             Block root = location.getBlock();
             if (root.getType() != Material.FERN) {
                 continue;

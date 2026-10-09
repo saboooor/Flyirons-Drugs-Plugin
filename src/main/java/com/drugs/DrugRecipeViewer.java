@@ -1,69 +1,40 @@
 package com.drugs;
 
 import org.bukkit.Bukkit;
-import org.bukkit.Material;
-import org.bukkit.configuration.ConfigurationSection;
+import org.bukkit.NamespacedKey;
 import org.bukkit.entity.Player;
-import org.bukkit.event.inventory.InventoryType;
-import org.bukkit.inventory.Inventory;
-import org.bukkit.inventory.ItemStack;
-import org.bukkit.plugin.Plugin;
-
-import java.util.HashMap;
+import org.bukkit.inventory.*;
 import java.util.Map;
 
-/**
- * Displays a crafting table GUI that visually shows the recipe for a drug.
- */
+/** Read-only display of the registered recipe, including harvested ingredients. */
 public class DrugRecipeViewer {
-
-    /**
-     * Opens a visual crafting grid to show the recipe for the given drug ID.
-     *
-     * @param player The player viewing the recipe
-     * @param drugId The internal ID of the drug
-     */
     public static void openRecipe(Player player, String drugId) {
-        Plugin plugin = DrugsV2.getInstance();
-        ConfigurationSection section = plugin instanceof DrugsV2 dp ? dp.getRecipesConfig().getConfigurationSection(drugId) : null;
-        if (section == null) {
-            player.sendMessage("§cRecipe not found for drug: " + drugId);
+        String key = "farm-controller".equals(drugId) ? "farm_controller" : drugId;
+        Recipe registered = Bukkit.getRecipe(new NamespacedKey(DrugsV2.getInstance(), key));
+        if (!(registered instanceof ShapedRecipe recipe)) {
+            player.sendMessage("§cRecipe not found for: " + drugId);
             return;
         }
-
-        // Create a crafting grid (InventoryType.WORKBENCH has a 3x3 layout)
-        Inventory recipeGUI = Bukkit.createInventory(null, InventoryType.WORKBENCH, "Recipe: " + drugId);
-
-        // Load shape and ingredients
-        var shape = section.getStringList("shape");
-        ConfigurationSection ingredients = section.getConfigurationSection("ingredients");
-
-        if (shape.size() != 3 || ingredients == null) {
-            player.sendMessage("§cInvalid recipe format.");
-            return;
-        }
-
-        // Build ingredient map
-        Map<Character, Material> ingredientMap = new HashMap<>();
-        for (String key : ingredients.getKeys(false)) {
-            Material mat = Material.matchMaterial(ingredients.getString(key));
-            if (mat != null) {
-                ingredientMap.put(key.charAt(0), mat);
+        Inventory gui = Bukkit.createInventory(null, 27, "Recipe: " + drugId);
+        Map<Character, RecipeChoice> ingredients = recipe.getChoiceMap();
+        String crop = DrugGrowing.requirement(drugId);
+        String[] shape = recipe.getShape();
+        for (int row = 0; row < shape.length; row++) {
+            for (int column = 0; column < shape[row].length(); column++) {
+                RecipeChoice choice = ingredients.get(shape[row].charAt(column));
+                if (choice == null) continue;
+                ItemStack ingredient = choice.getItemStack();
+                if (crop != null && ingredient.getType() == DrugGrowing.material(crop))
+                    ingredient = DrugGrowing.harvest(crop, "cannabis".equals(crop) ? DrugItemMetadata.DEFAULT_STRAIN_ID : null);
+                gui.setItem(row * 9 + column + 1, ingredient);
             }
         }
-
-        // Fill crafting grid (3x3 = slots 1–9 in WORKBENCH inventory layout)
-        int index = 1;
-        for (String row : shape) {
-            for (char c : row.toCharArray()) {
-                Material mat = ingredientMap.getOrDefault(c, Material.AIR);
-                if (mat != Material.AIR) {
-                    recipeGUI.setItem(index, new ItemStack(mat));
-                }
-                index++;
-            }
+        gui.setItem(15, recipe.getResult());
+        player.openInventory(gui);
+        if (crop != null) {
+            if ("cannabis".equals(crop)) player.sendMessage("§aGrow ferns into large ferns, then harvest with shears for Cannabis Buds.");
+            else player.sendMessage("§aCraft " + crop + " seeds using wheat seeds + " + DrugGrowing.material(crop).name().toLowerCase().replace('_', ' ')
+                + ". Plant on hydrated farmland and wait for full growth.");
         }
-
-        player.openInventory(recipeGUI);
     }
 }

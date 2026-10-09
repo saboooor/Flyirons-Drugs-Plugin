@@ -109,7 +109,7 @@ public class BongListener implements Listener {
 
         ItemStack weed = resolveWeedItem(player);
         if (weed == null) {
-            player.sendMessage("§cHold weed to use the bong.");
+            player.sendMessage("§cHold harvested Cannabis Buds to use the bong.");
             return;
         }
 
@@ -395,6 +395,6 @@ public class BongListener implements Listener {
         if (item == null || item.getType() == Material.AIR || !item.hasItemMeta()) return false;
         ItemMeta meta = item.getItemMeta();
         String itemType = DrugItemMetadata.getItemType(meta);
-        return itemType != null && itemType.equalsIgnoreCase("cannabis_plant");
+        return itemType != null && itemType.equalsIgnoreCase("harvest_cannabis");
     }
 }

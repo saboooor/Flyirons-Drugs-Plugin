@@ -20,6 +20,7 @@ public class DrugsV2 extends JavaPlugin {
     private FileConfiguration recipesConfig;
     private File recipesFile;
     private BongListener bongListener;
+    private DrugGrowing drugGrowing;
     private WeedFarmManager weedFarmManager;
     private LsdEffectManager lsdEffectManager;
     private SalviaEffectManager salviaEffectManager;
@@ -67,6 +68,9 @@ public class DrugsV2 extends JavaPlugin {
         weedFarmManager = new WeedFarmManager(getDataFolder());
         weedFarmManager.load();
 
+        drugGrowing = new DrugGrowing(this);
+        getServer().getPluginManager().registerEvents(drugGrowing, this);
+
         // Initialize core drug system
         DrugRegistry.init(this);
         CureRegistry.init(this);
@@ -84,6 +88,7 @@ public class DrugsV2 extends JavaPlugin {
         getServer().getPluginManager().registerEvents(new AddictionListener(), this);
         getServer().getPluginManager().registerEvents(new CannabisPlantListener(), this);
         getServer().getPluginManager().registerEvents(new StrainCraftingListener(), this);
+        getServer().getPluginManager().registerEvents(new HarvestCraftingListener(), this);
         getServer().getPluginManager().registerEvents(new StrainsMenuListener(), this);
         bongListener = new BongListener();
         getServer().getPluginManager().registerEvents(bongListener, this);
@@ -117,6 +122,7 @@ public class DrugsV2 extends JavaPlugin {
     @Override
     public void onDisable() {
         CannabisPlantRegistry.save();
+        if (drugGrowing != null) drugGrowing.save();
         BongRegistry.save();
         if (weedFarmManager != null) {
             weedFarmManager.save();
@@ -221,6 +227,10 @@ public class DrugsV2 extends JavaPlugin {
     }
     public FileConfiguration getRecipesConfig() {
         return recipesConfig;
+    }
+
+    public void reloadGrowing() {
+        if (drugGrowing != null) drugGrowing.reloadConfiguration();
     }
 
     public BongListener getBongListener() {

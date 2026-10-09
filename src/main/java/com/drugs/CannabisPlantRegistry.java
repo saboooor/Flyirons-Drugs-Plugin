@@ -103,7 +103,10 @@ public class CannabisPlantRegistry {
         Map<String, String> snapshot = new HashMap<>(plants);
         for (String key : snapshot.keySet()) {
             Location location = parseKey(key);
-            if (location == null || location.getBlock().getType().isAir()) {
+            if (location == null) continue;
+            if (!location.getWorld().isChunkLoaded(location.getBlockX() >> 4, location.getBlockZ() >> 4)) continue;
+            org.bukkit.Material type = location.getBlock().getType();
+            if (type != org.bukkit.Material.FERN && type != org.bukkit.Material.LARGE_FERN) {
                 plants.remove(key);
             }
         }

@@ -18,6 +18,7 @@ public class StrainCraftingListener implements Listener {
     public void onCraft(CraftItemEvent event) {
         if (event.getInventory() instanceof CraftingInventory craftingInventory) {
             applyStrainToResult(craftingInventory);
+            if (craftingInventory.getResult() == null) event.setCancelled(true);
         }
     }
 

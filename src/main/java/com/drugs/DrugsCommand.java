@@ -48,6 +48,19 @@ public class DrugsCommand implements CommandExecutor {
             return true;
         }
 
+        // /drugs growing
+        if (args[0].equalsIgnoreCase("growing")) {
+            sender.sendMessage("§aGrow and harvest ingredients before crafting drugs.");
+            sender.sendMessage("§7Craft crop seeds with wheat seeds + the ingredient listed below:");
+            for (String crop : DrugGrowing.cropIds()) {
+                sender.sendMessage("§e" + crop + "§7: " + DrugGrowing.material(crop).name().toLowerCase().replace('_', ' '));
+            }
+            sender.sendMessage("§7Right click hydrated farmland with seeds. Keep crops lit and wait until fully grown.");
+            sender.sendMessage("§7Break mature crops for ingredients and a reusable seed. Early harvest returns only the seed.");
+            sender.sendMessage("§7Cannabis: plant ferns, wait for large ferns, and harvest with shears for buds and new plants.");
+            return true;
+        }
+
         // /drugs help
         if (args[0].equalsIgnoreCase("help")) {
             sender.sendMessage(ChatColor.GOLD + "-----[ Flyiron's Drugs Help ]-----");
@@ -80,6 +93,7 @@ public class DrugsCommand implements CommandExecutor {
                 sender.sendMessage(ChatColor.YELLOW + "/drugs overdose reload" + ChatColor.GRAY + " - Reload overdose configuration");
                 sender.sendMessage(ChatColor.YELLOW + "/drugs overdose reset <player>" + ChatColor.GRAY + " - Reset a player's overdose counts");
             }
+            sender.sendMessage(ChatColor.YELLOW + "/drugs growing" + ChatColor.GRAY + " - Learn how to grow crafting ingredients");
             sender.sendMessage(ChatColor.YELLOW + "/drugs help" + ChatColor.GRAY + " - Show this help menu");
             sender.sendMessage("");
             sender.sendMessage(ChatColor.DARK_RED + "⚠ Using drugs too often causes tolerance. Max tolerance = no effects!");
@@ -196,6 +210,7 @@ public class DrugsCommand implements CommandExecutor {
             }
 
             DrugsV2.getInstance().reloadConfig();
+            DrugsV2.getInstance().reloadGrowing();
             DrugsV2.getInstance().saveRecipesConfig();
             DrugsV2.getInstance().saveToleranceConfig();
             DrugsV2.getInstance().saveAchievementSettingsConfig();
