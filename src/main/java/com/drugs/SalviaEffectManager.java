@@ -1,5 +1,6 @@
 package com.drugs;
 
+import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.entity.BlockDisplay;
@@ -24,6 +25,8 @@ public class SalviaEffectManager implements Listener {
     private final Map<UUID, BukkitTask> movementTasks = new HashMap<>();
     private final Map<UUID, BukkitTask> endTasks = new HashMap<>();
     private final Map<UUID, BukkitTask> activationDelayTasks = new HashMap<>();
+    private final Map<UUID, Integer> activationTicks = new HashMap<>();
+    private final Map<UUID, Integer> completionTicks = new HashMap<>();
     private final Map<UUID, Location> lastKnownLocations = new HashMap<>();
 
     public SalviaEffectManager(DrugsV2 plugin) {
@@ -39,6 +42,9 @@ public class SalviaEffectManager implements Listener {
 
         long delayTicks = delaySeconds * 20L;
         long durationTicks = durationSeconds * 20L;
+        int now = Bukkit.getCurrentTick();
+        activationTicks.put(uuid, now + (int) delayTicks);
+        completionTicks.put(uuid, now + (int) (delayTicks + durationTicks));
 
         BukkitTask activationTask = plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
             Player online = plugin.getServer().getPlayer(uuid);
@@ -81,6 +87,25 @@ public class SalviaEffectManager implements Listener {
         activationDelayTasks.put(uuid, activationTask);
     }
 
+    public boolean hasEffect(Player player) {
+        UUID uuid = player.getUniqueId();
+        return activationDelayTasks.containsKey(uuid) || activeDisplays.containsKey(uuid);
+    }
+
+    public boolean isPending(Player player) {
+        return activationDelayTasks.containsKey(player.getUniqueId());
+    }
+
+    public int getDelayTicks(Player player) {
+        if (!isPending(player)) return 0;
+        return Math.max(0, activationTicks.getOrDefault(player.getUniqueId(), Bukkit.getCurrentTick()) - Bukkit.getCurrentTick());
+    }
+
+    public int getRemainingTicks(Player player) {
+        int total = Math.max(0, completionTicks.getOrDefault(player.getUniqueId(), Bukkit.getCurrentTick()) - Bukkit.getCurrentTick());
+        return Math.max(0, total - getDelayTicks(player));
+    }
+
     public void cleanupAll() {
         for (UUID uuid : activeDisplays.keySet().toArray(new UUID[0])) {
             cleanupPlayer(uuid);
@@ -90,9 +115,13 @@ public class SalviaEffectManager implements Listener {
             task.cancel();
         }
         activationDelayTasks.clear();
+        activationTicks.clear();
+        completionTicks.clear();
     }
 
     private void cleanupPlayer(UUID uuid) {
+        activationTicks.remove(uuid);
+        completionTicks.remove(uuid);
         BukkitTask movementTask = movementTasks.remove(uuid);
         if (movementTask != null) {
             movementTask.cancel();

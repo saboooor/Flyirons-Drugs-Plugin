@@ -89,6 +89,7 @@ public class CustomAchievementLoader {
             }
         }
         
+        NativeAdvancements.reload();
         Bukkit.getLogger().info("[FlyironsDrugs] Loaded " + achievements.size() + " achievements");
     }
     

@@ -8,8 +8,13 @@ softdepend: [PlaceholderAPI]
 commands:
   drugs:
     description: Opens the drug selection GUI or runs admin commands
-    usage: /drugs [give/help/purge/reload/list/achievements]
+    usage: /drugs [give/help/purge/reload/list/achievements/status]
     permission: drugs.menu
+
+  drugstatus:
+    description: Check which drugs are affecting you or whether you are fully sober
+    usage: /drugstatus
+    permission: drugs.status
 
   tolerance:
     description: View your current drug tolerance levels
@@ -22,6 +27,10 @@ commands:
     permission: drugs.strains
 
 permissions:
+  drugs.status:
+    description: Allows checking your own current drug status
+    default: true
+
   drugs.menu:
     description: Allows access to the drug menu
     default: true

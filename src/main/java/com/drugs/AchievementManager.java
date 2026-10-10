@@ -1,13 +1,6 @@
 package com.drugs;
 
-import org.bukkit.ChatColor;
-import org.bukkit.Color;
-import org.bukkit.FireworkEffect;
-import org.bukkit.FireworkEffect.Type;
-import org.bukkit.Sound;
-import org.bukkit.entity.Firework;
 import org.bukkit.entity.Player;
-import org.bukkit.inventory.meta.FireworkMeta;
 
 import java.util.*;
 
@@ -30,38 +23,7 @@ public class AchievementManager {
             return;
         }
         
-        PlayerAchievementData data = new PlayerAchievementData(player.getUniqueId());
-
-        if (data.hasAchievement(achievementId)) return;
-
-        data.grantAchievement(achievementId);
-
-        // Chat message notification
-        if (AchievementSettingsLoader.isChatNotificationsEnabled()) {
-            String msg = ChatColor.translateAlternateColorCodes('&',
-                    AchievementSettingsLoader.getUnlockPrefix() + achievement.getTitle());
-            player.sendMessage(msg);
-        }
-
-        // Sound effect
-        if (AchievementSettingsLoader.isSoundNotificationsEnabled()) {
-            player.playSound(player.getLocation(), Sound.ENTITY_PLAYER_LEVELUP, 1f, 1f);
-        }
-
-        // Firework celebration
-        if (AchievementSettingsLoader.isFireworkNotificationsEnabled()) {
-            Firework fw = (Firework) player.getWorld().spawn(player.getLocation(), Firework.class);
-            FireworkMeta meta = fw.getFireworkMeta();
-            meta.addEffect(FireworkEffect.builder()
-                    .withColor(Color.AQUA)
-                    .withFade(Color.WHITE)
-                    .with(Type.BALL_LARGE)
-                    .trail(true)
-                    .flicker(true)
-                    .build());
-            meta.setPower(1);
-            fw.setFireworkMeta(meta);
-        }
+        NativeAdvancements.award(player, achievementId);
     }
 
     /**
@@ -82,8 +44,7 @@ public class AchievementManager {
             return true;
         }
         
-        PlayerAchievementData data = new PlayerAchievementData(player.getUniqueId());
-        return data.hasAchievement(achievementId);
+        return NativeAdvancements.has(player, achievementId);
     }
 
     /**
@@ -98,8 +59,11 @@ public class AchievementManager {
             return new HashSet<>();
         }
         
-        PlayerAchievementData data = new PlayerAchievementData(player.getUniqueId());
-        return data.getUnlockedAchievements();
+        Set<String> unlocked = new HashSet<>();
+        for (CustomAchievement achievement : CustomAchievementLoader.getAllAchievements()) {
+            if (NativeAdvancements.has(player, achievement.getId())) unlocked.add(achievement.getId());
+        }
+        return unlocked;
     }
     
     /**

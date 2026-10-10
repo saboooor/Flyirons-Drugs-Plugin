@@ -77,6 +77,7 @@ public class AchievementSettingsLoader {
         }
         
         // Load individual achievement settings
+        achievementSettings.clear();
         ConfigurationSection achieveSection = config.getConfigurationSection("achievements");
         if (achieveSection != null) {
             for (String key : achieveSection.getKeys(false)) {
@@ -135,7 +136,7 @@ public class AchievementSettingsLoader {
     public static boolean isAchievementEnabled(String key) {
         if (!enabled) return false;
         AchievementSettings settings = achievementSettings.get(key);
-        return settings != null && settings.isEnabled();
+        return settings == null || settings.isEnabled();
     }
     
     /**
@@ -143,7 +144,7 @@ public class AchievementSettingsLoader {
      */
     public static String getAchievementTitle(String key, String defaultTitle) {
         AchievementSettings settings = achievementSettings.get(key);
-        return settings != null ? settings.getTitle() : defaultTitle;
+        return settings != null && !settings.getTitle().isEmpty() ? settings.getTitle() : defaultTitle;
     }
     
     /**
@@ -151,6 +152,6 @@ public class AchievementSettingsLoader {
      */
     public static String getAchievementDescription(String key, String defaultDesc) {
         AchievementSettings settings = achievementSettings.get(key);
-        return settings != null ? settings.getDescription() : defaultDesc;
+        return settings != null && !settings.getDescription().isEmpty() ? settings.getDescription() : defaultDesc;
     }
 } 

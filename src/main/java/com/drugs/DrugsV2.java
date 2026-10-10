@@ -53,7 +53,6 @@ public class DrugsV2 extends JavaPlugin {
         
         // Load achievement settings and achievements
         AchievementSettingsLoader.load(getDataFolder());
-        CustomAchievementLoader.load(getDataFolder());
         
         // Load overdose effect settings
         OverdoseEffectManager.load(getDataFolder());
@@ -73,6 +72,7 @@ public class DrugsV2 extends JavaPlugin {
 
         // Initialize core drug system
         DrugRegistry.init(this);
+        CustomAchievementLoader.load(getDataFolder());
         CureRegistry.init(this);
         registerBongRecipe();
         registerFarmControllerRecipe();
@@ -83,6 +83,7 @@ public class DrugsV2 extends JavaPlugin {
         ToleranceTracker.startDecayTask();
 
         // Register events
+        getServer().getPluginManager().registerEvents(new DrugStatusTracker(), this);
         getServer().getPluginManager().registerEvents(new DrugMenuListener(), this);
         getServer().getPluginManager().registerEvents(new DrugUseListener(), this);
         getServer().getPluginManager().registerEvents(new AddictionListener(), this);
@@ -96,7 +97,7 @@ public class DrugsV2 extends JavaPlugin {
         getServer().getPluginManager().registerEvents(lsdEffectManager, this);
         salviaEffectManager = new SalviaEffectManager(this);
         getServer().getPluginManager().registerEvents(salviaEffectManager, this);
-        Bukkit.getPluginManager().registerEvents(new AchievementsGUI(), DrugsV2.getInstance());
+        Bukkit.getPluginManager().registerEvents(new NativeAdvancements(), DrugsV2.getInstance());
         getServer().getPluginManager().registerEvents(new WeedFarmControllerListener(weedFarmManager), this);
         getServer().getScheduler().runTaskTimer(this, new WeedFarmWorkerService(weedFarmManager), MechanicsConfig.getWorkerTickInterval(), MechanicsConfig.getWorkerTickInterval());
 
@@ -105,6 +106,7 @@ public class DrugsV2 extends JavaPlugin {
         // Register commands
         getCommand("drugs").setExecutor(new DrugsCommand());
         getCommand("drugs").setTabCompleter(new DrugsTabCompleter());
+        getCommand("drugstatus").setExecutor(new DrugStatusCommand());
         getCommand("tolerance").setExecutor(new ToleranceCommand());
         StrainsCommand strainsCommand = new StrainsCommand();
         getCommand("strains").setExecutor(strainsCommand);

@@ -112,7 +112,7 @@ public class DrugEffectProfile {
             int newDuration = (int) Math.max(1, Math.round(source.getDuration() * toleranceMultiplier));
             int amplifier = Math.max(0, source.getAmplifier());
 
-            player.addPotionEffect(new PotionEffect(
+            DrugStatusTracker.applyEffect(player, id, new PotionEffect(
                     source.getType(),
                     newDuration,
                     amplifier,
@@ -132,7 +132,7 @@ public class DrugEffectProfile {
         int randomDuration = 20 + random.nextInt(1200);
         int adjustedDuration = (int) Math.max(1, Math.round(randomDuration * toleranceMultiplier));
 
-        player.addPotionEffect(new PotionEffect(
+        DrugStatusTracker.applyEffect(player, id, new PotionEffect(
                 base.getType(),
                 adjustedDuration,
                 Math.max(0, base.getAmplifier()),

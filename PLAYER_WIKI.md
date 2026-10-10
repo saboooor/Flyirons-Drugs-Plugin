@@ -41,7 +41,8 @@ This means your decisions matter over time, not just in one fight.
 - `/drugs help` → Shows command help.
 - `/tolerance` → Shows your tolerance and current potency per drug.
 - `/strains` → Opens cannabis strain browser.
-- `/drugs achievements` → Opens achievements GUI.
+- `/drugstatus` or `/drugs status` → Lists drugs currently affecting you, their remaining durations and effects, including onset delays for LSD/salvia, or confirms you are fully sober. Tolerance and addiction alone do not count as being high.
+- `/drugs achievements` → Use Minecraft’s Advancements screen (L) and select the Drugs tab.
 
 > Tip: `/tolerance` is your most important survival command if you use drugs often.
 

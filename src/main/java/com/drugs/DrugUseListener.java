@@ -165,21 +165,6 @@ public class DrugUseListener implements Listener {
      * Tracks drug usage for the connoisseur achievement
      */
     private void trackDrugUsedForConnoisseur(Player player, String drugId) {
-        PlayerAchievementData data = new PlayerAchievementData(player.getUniqueId());
-        String perDrugKey = "connoisseur-used-" + drugId;
-
-        if (!data.hasAchievement(perDrugKey)) {
-            data.grantAchievement(perDrugKey);
-
-            Set<String> required = new HashSet<>();
-            for (String id : DrugRegistry.getRegisteredDrugNames()) {
-                required.add("connoisseur-used-" + id);
-            }
-
-            if (data.getUnlockedAchievements().containsAll(required)) {
-                Map<String, Object> context = AchievementManager.createContext();
-                AchievementManager.processTrigger(player, "all_drugs_used", context);
-            }
-        }
+        NativeAdvancements.trackDrug(player, drugId);
     }
 }

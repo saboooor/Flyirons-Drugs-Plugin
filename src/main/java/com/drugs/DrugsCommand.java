@@ -32,8 +32,16 @@ public class DrugsCommand implements CommandExecutor {
             return true;
         }
 
+        if (args[0].equalsIgnoreCase("status")) {
+            if (args.length != 1) {
+                sender.sendMessage(ChatColor.RED + "Usage: /drugs status");
+                return true;
+            }
+            return DrugStatusCommand.show(sender);
+        }
+
         // /drugs achievements
-        if (args[0].equalsIgnoreCase("achievements")) {
+        if (args[0].equalsIgnoreCase("achievements") && args.length == 1) {
             if (!(sender instanceof Player player)) {
                 sender.sendMessage(ChatColor.RED + "Only players can view achievements.");
                 return true;
@@ -44,7 +52,7 @@ public class DrugsCommand implements CommandExecutor {
                 return true;
             }
 
-            AchievementsGUI.open(player);
+            player.sendMessage(ChatColor.GREEN + "Open Minecraft’s Advancements screen (default key: L) and select the Drugs tab.");
             return true;
         }
 
@@ -82,6 +90,9 @@ public class DrugsCommand implements CommandExecutor {
             }
             if (sender.hasPermission("drugs.admin.list")) {
                 sender.sendMessage(ChatColor.YELLOW + "/drugs list" + ChatColor.GRAY + " - Show all available drugs");
+            }
+            if (sender.hasPermission("drugs.status")) {
+                sender.sendMessage(ChatColor.YELLOW + "/drugstatus or /drugs status" + ChatColor.GRAY + " - Check whether you are sober");
             }
             if (sender.hasPermission("drugs.achievements")) {
                 sender.sendMessage(ChatColor.YELLOW + "/drugs achievements" + ChatColor.GRAY + " - View your achievement progress");
@@ -222,7 +233,6 @@ public class DrugsCommand implements CommandExecutor {
 
             ToleranceConfigLoader.load(DrugsV2.getInstance().getDataFolder());
             AchievementSettingsLoader.load(DrugsV2.getInstance().getDataFolder());
-            CustomAchievementLoader.load(DrugsV2.getInstance().getDataFolder());
             OverdoseEffectManager.load(DrugsV2.getInstance().getDataFolder());
             AddictionConfigLoader.load(DrugsV2.getInstance());
             StrainConfigLoader.load(DrugsV2.getInstance().getDataFolder());
@@ -233,6 +243,7 @@ public class DrugsCommand implements CommandExecutor {
                 BongRegistry.respawnMissing(DrugsV2.getInstance().getBongListener());
             }
             DrugRegistry.init(DrugsV2.getInstance());
+            CustomAchievementLoader.load(DrugsV2.getInstance().getDataFolder());
             CureRegistry.init(DrugsV2.getInstance());
             AddictionManager.reload(DrugsV2.getInstance());
 

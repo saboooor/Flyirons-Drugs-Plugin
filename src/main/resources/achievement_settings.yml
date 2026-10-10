@@ -3,11 +3,11 @@ enabled: true  # Set to false to disable the entire achievement system
 
 # Achievement unlock notification settings
 notifications:
-  chat_message: true  # Show chat message on unlock
-  sound: true         # Play sound on unlock
-  fireworks: true     # Show fireworks on unlock
+  chat_message: true  # Vanilla advancement chat announcement
+  sound: true         # Native unlock toast and sound
+  fireworks: true     # Legacy setting; native advancements do not spawn fireworks
 
-# Achievement Messages - Customize these to your liking
+# Legacy messages (native advancement announcements use Minecraft translations)
 messages:
   unlock_prefix: "&6[Drugs] &aAchievement Unlocked: "
   

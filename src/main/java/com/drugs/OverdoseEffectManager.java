@@ -330,7 +330,7 @@ public class OverdoseEffectManager {
         @Override
         public boolean apply(Player player, String drugId) {
             for (PotionEffect effect : effects) {
-                player.addPotionEffect(effect);
+                DrugStatusTracker.applyEffect(player, drugId, effect);
             }
             return false;
         }

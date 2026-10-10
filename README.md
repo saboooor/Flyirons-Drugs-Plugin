@@ -37,7 +37,7 @@ Compared to a basic consumable-effects plugin, this version includes:
   - Configurable cooldown.
   - Configurable durability/uses.
 - Cart durability/uses mechanic.
-- Achievement system + GUI + configurable triggers.
+- Native Minecraft advancements + configurable triggers.
 - PlaceholderAPI expansion for tolerance/effectiveness placeholders.
 - Admin tooling for reloading configs, purging player data, listing drugs, and resetting overdose counters.
 - Villager Weed Workers (Farm Controller automation with worker villagers).
@@ -98,8 +98,9 @@ Compared to a basic consumable-effects plugin, this version includes:
 - `/strains`  
   Opens the cannabis strain index GUI.
 
+- `/drugstatus` or `/drugs status` → Lists drugs currently affecting you, their remaining durations and effects, including onset delays for LSD/salvia, or confirms you are fully sober. Tolerance and addiction alone do not count as being high.
 - `/drugs achievements`  
-  Opens the achievements GUI.
+  Explains how to open Minecraft’s Advancements screen (default key: L), then select the Drugs tab.
 
 ## Admin Commands
 
@@ -208,10 +209,12 @@ Default config includes non-lethal confusion/nausea overdose behavior for cannab
 
 ## Achievement System
 
-Achievements are split into:
+Drug milestones appear in the Drugs tab of Minecraft’s native Advancements screen, with vanilla unlock toasts and server-managed progress. Existing YAML unlocks and connoisseur tracking migrate when players join. Configuration is split into:
 
 - `achievement_settings.yml` (system toggles + notifications + quick defaults)
 - `achievements.yml` (trigger definitions and custom achievements)
+
+The `notifications.chat_message` setting controls vanilla chat announcements, and `notifications.sound` controls native unlock toasts (including their sound). Legacy fireworks and unlock prefixes are no longer used.
 
 Supported trigger styles include first use, all drugs used, max tolerance behavior, crafting-based triggers, use-count triggers, and overdose outcomes.
 
