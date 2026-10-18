@@ -29,6 +29,11 @@ npc:
 
 # Temporary cartel encounters. Existing cartel.yml files use these defaults if absent.
 enforcer:
+  wall-climbing:
+    enabled: true
+    max-height: 6             # Blocks; capped at 16.
+    timeout-ticks: 100        # Maximum time per climb (20 ticks = 1 second).
+  open-doors: true             # Allow Citizens navigation to open doors along the route.
   enabled: true                 # Automatic spawns; admins can still trigger encounters manually.
   # Each encounter chooses a random registered drug with a positive, finite base price.
   min-amount: 8                 # Inclusive random quantity limits, clamped to 1–2304.

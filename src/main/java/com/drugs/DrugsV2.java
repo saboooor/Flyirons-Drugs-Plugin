@@ -121,6 +121,7 @@ public class DrugsV2 extends JavaPlugin {
         manager.registerEvents(new StrainCraftingListener(), this);
         manager.registerEvents(new HarvestCraftingListener(), this);
         manager.registerEvents(new StrainsMenuListener(), this);
+        manager.registerEvents(new EnforcerGuide(this), this);
         bongListener = new BongListener();
         manager.registerEvents(bongListener, this);
         lsdEffectManager = new LsdEffectManager(this);

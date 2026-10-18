@@ -62,6 +62,8 @@ public final class DrugGrowing implements Listener {
         crops.put(id, new Crop(id, name, ingredient, ingredient, Math.max(8, config.getInt(id + ".growth-seconds", seconds))));
     }
 
+    static Crop crop(String id) { return crops.get(id); }
+
     public static Set<String> cropIds() { return Collections.unmodifiableSet(crops.keySet()); }
     public static String requirement(String drug) { return requirements.get(drug.toLowerCase(Locale.ROOT)); }
     public static Material material(String crop) { return "cannabis".equals(crop) ? Material.FERN : crops.get(crop).ingredient(); }

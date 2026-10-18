@@ -4,6 +4,7 @@ import net.citizensnpcs.api.CitizensAPI;
 import net.citizensnpcs.api.ai.Navigator;
 import net.citizensnpcs.api.event.CitizensEnableEvent;
 import net.citizensnpcs.api.event.NPCRightClickEvent;
+import net.citizensnpcs.api.event.NPCLeftClickEvent;
 import net.citizensnpcs.api.npc.NPC;
 import net.citizensnpcs.api.npc.NPCRegistry;
 import net.citizensnpcs.trait.SkinTrait;
@@ -53,6 +54,11 @@ final class CitizensCartelNpcs implements CartelNpcs, Listener {
         try {
             npc = registry.createNPC(EntityType.PLAYER, role.equals("buyer") ? buyerName() : "Cartel Enforcer");
             npc.data().setPersistent(ROLE, role);
+            if (role.equals("enforcer")) {
+                npc.data().setPersistent("activation-range", 64);
+                npc.data().setPersistent("pathfinder-open-doors",
+                        dealer.settings().getBoolean("enforcer.open-doors", true));
+            }
             npc.setProtected(true);
             npc.data().setPersistent("collidable", false);
             applySkin(npc);
@@ -137,6 +143,12 @@ final class CitizensCartelNpcs implements CartelNpcs, Listener {
         }
     }
 
+    @EventHandler(ignoreCancelled = true) public void onLeftClick(NPCLeftClickEvent event) {
+        if (closed || !event.getNPC().isSpawned() || !owns(event.getNPC(), "enforcer")) return;
+        event.setCancelled(true);
+        dealer.interactEnforcer(event.getClicker(), event.getNPC().getEntity());
+    }
+
     @EventHandler public void onCitizensEnable(CitizensEnableEvent event) { reload(); }
     @EventHandler public void onChunkLoad(ChunkLoadEvent event) {
         if (closed) return;
@@ -145,25 +157,88 @@ final class CitizensCartelNpcs implements CartelNpcs, Listener {
         }
     }
 
-    private static final class Citizen implements Character {
+    static boolean runningAway(Location pursuer, Location previous, Location current, boolean sprinting) {
+        if (!sprinting || previous == null || !current.getWorld().equals(previous.getWorld())
+                || !current.getWorld().equals(pursuer.getWorld())) return false;
+        double dx = current.getX() - previous.getX();
+        double dz = current.getZ() - previous.getZ();
+        return dx * dx + dz * dz > 0.0001
+                && dx * (current.getX() - pursuer.getX()) + dz * (current.getZ() - pursuer.getZ()) > 0;
+    }
+
+    private final class Citizen implements Character {
+        private org.bukkit.scheduler.BukkitTask climbingTask;
+        private Player climbingTarget;
+        private boolean climbing;
+        private int retryTicks;
+        private Location previousTargetLocation;
+        private final EnforcerWallClimber climber = new EnforcerWallClimber();
         private final NPC npc;
         Citizen(NPC npc) { this.npc = npc; }
         public LivingEntity entity() { return (LivingEntity) npc.getEntity(); }
         public boolean valid() { return npc.isSpawned() && npc.getEntity() != null && npc.getEntity().isValid(); }
         public boolean approach(Player player) {
             if (!valid()) return false;
+            if (owns(npc, "enforcer") && climbingTask == null) {
+                climbingTarget = player;
+                previousTargetLocation = player.getLocation();
+                climbingTask = plugin.getServer().getScheduler().runTaskTimer(plugin, () -> {
+                    if (closed || !valid() || !climbingTarget.isOnline() || climbingTarget.isDead()) {
+                        stop();
+                        return;
+                    }
+                    Location targetLocation = climbingTarget.getLocation();
+                    boolean sprinting = !climbing && runningAway(entity().getLocation(), previousTargetLocation,
+                            targetLocation, climbingTarget.isSprinting());
+                    previousTargetLocation = targetLocation;
+                    float speed = sprinting ? 1.5F : 1.15F;
+                    Navigator chase = npc.getNavigator();
+                    chase.getDefaultParameters().speedModifier(speed);
+                    if (chase.isNavigating()) chase.getLocalParameters().speedModifier(speed);
+                    if (entity() instanceof Player body) body.setSprinting(sprinting);
+                    int height = Math.max(1, Math.min(16,
+                            dealer.settings().getInt("enforcer.wall-climbing.max-height", 6)));
+                    int timeout = Math.max(20, Math.min(400,
+                            dealer.settings().getInt("enforcer.wall-climbing.timeout-ticks", 100)));
+                    boolean wasClimbing = climbing;
+                    climbing = dealer.settings().getBoolean("enforcer.wall-climbing.enabled", true)
+                            && climber.tick(entity(), climbingTarget, height, timeout,
+                                    () -> npc.getNavigator().cancelNavigation());
+                    if (!climbing && !npc.getNavigator().isNavigating()) {
+                        climber.approachWhenNoPath(entity(), climbingTarget, sprinting ? 0.235 : 0.18);
+                    }
+                    if (!climbing && (wasClimbing || ++retryTicks >= 10)) {
+                        retryTicks = 0;
+                        if (wasClimbing || !npc.getNavigator().isNavigating()) {
+                            npc.getNavigator().setTarget(climbingTarget, false);
+                        }
+                    }
+                }, 1L, 1L);
+            }
+            if (climbing) return true;
             Navigator navigator = npc.getNavigator();
             if (navigator.isNavigating() && navigator.getEntityTarget() != null
                     && navigator.getEntityTarget().getTarget().equals(player)) return true;
             navigator.getDefaultParameters().range(64).speedModifier(1.15F).distanceMargin(2)
+                    .useNewPathfinder(true).updatePathRate(10).stationaryTicks(20)
                     .stuckAction((ignoredNpc, ignoredNavigator) -> false);
             // A preliminary canNavigateTo check can reject a freshly spawned NPC.
             // Let navigation run; the encounter's approach timeout handles unreachable players.
             navigator.setTarget(player, false);
             return true;
         }
-        public void stop() { npc.getNavigator().cancelNavigation(); }
+        public void stop() {
+            if (climbingTask != null) climbingTask.cancel();
+            climbingTask = null;
+            climber.reset();
+            climbing = false;
+            retryTicks = 0;
+            if (valid() && entity() instanceof Player body) body.setSprinting(false);
+            previousTargetLocation = null;
+            npc.getNavigator().cancelNavigation();
+        }
         public void destroy() {
+            stop();
             NPCRegistry registry = npc.getOwningRegistry();
             npc.destroy();
             registry.saveToStore();

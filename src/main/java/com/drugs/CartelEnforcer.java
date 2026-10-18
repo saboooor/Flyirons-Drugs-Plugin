@@ -77,11 +77,16 @@ public final class CartelEnforcer implements Listener {
         return Math.max(min, Math.min(max, config().getInt("enforcer." + setting, fallback)));
     }
 
+    private boolean hasBypass(Player player) {
+        return player.isPermissionSet("drugs.cartel.enforcer.bypass")
+                && player.hasPermission("drugs.cartel.enforcer.bypass");
+    }
+
     private boolean eligible(Player player) {
         return player.isOnline() && !player.isDead() && !player.hasMetadata("NPC")
                 && (player.getGameMode() == GameMode.SURVIVAL || player.getGameMode() == GameMode.ADVENTURE)
                 && player.hasPermission("drugs.cartel.sell")
-                && !player.hasPermission("drugs.cartel.enforcer.bypass");
+                && !hasBypass(player);
     }
 
     private boolean isEnforcer(Entity entity) {
@@ -139,7 +144,7 @@ public final class CartelEnforcer implements Listener {
         if (player.getGameMode() != GameMode.SURVIVAL && player.getGameMode() != GameMode.ADVENTURE)
             return "The target must be in Survival or Adventure mode.";
         if (!player.hasPermission("drugs.cartel.sell")) return "The target lacks drugs.cartel.sell permission.";
-        if (player.hasPermission("drugs.cartel.enforcer.bypass"))
+        if (hasBypass(player))
             return "The target has drugs.cartel.enforcer.bypass. Remove that permission to allow encounters.";
         if (encounters.containsKey(player.getUniqueId()))
             return "The target already has an active encounter. Finish it or use /cartel reload to call it off.";
@@ -319,6 +324,7 @@ public final class CartelEnforcer implements Listener {
         long now = clock.getAsLong();
         if (encounter.deadline == 0) {
             beginDemand(player, encounter, now);
+            EnforcerGuide.open(plugin, player, encounter.drug);
             return; // First interaction explains the deal before any items are sold.
         }
         if (now >= encounter.deadline) {
@@ -326,8 +332,7 @@ public final class CartelEnforcer implements Listener {
             finish(player.getUniqueId());
             return;
         }
-        player.sendMessage(ChatColor.YELLOW + "Throw " + (encounter.amount - encounter.delivered) + " more "
-                + encounter.drug + " near me. " + remainingSeconds(encounter, now) + "s left.");
+        EnforcerGuide.open(plugin, player, encounter.drug);
     }
 
     boolean acceptDrop(Player player, Item item) {

@@ -4,6 +4,7 @@ import net.citizensnpcs.api.CitizensAPI;
 import net.citizensnpcs.api.ai.Navigator;
 import net.citizensnpcs.api.ai.NavigatorParameters;
 import net.citizensnpcs.api.event.NPCRightClickEvent;
+import net.citizensnpcs.api.event.NPCLeftClickEvent;
 import net.citizensnpcs.api.npc.MetadataStore;
 import net.citizensnpcs.api.npc.NPC;
 import net.citizensnpcs.api.npc.NPCRegistry;
@@ -117,6 +118,8 @@ class CitizensCartelNpcsTest {
         config.set("npc.skin-name", "MyCartelSkin");
         assertNotNull(service.create(location, "enforcer"));
         verify(temporary).createNPC(EntityType.PLAYER, "Cartel Enforcer");
+        verify(metadata).setPersistent("pathfinder-open-doors", true);
+        verify(metadata).setPersistent("activation-range", 64);
         verify(persistent, never()).createNPC(any(), anyString());
         verify(skin).clearTexture();
         verify(skin).setSkinName("MyCartelSkin");
@@ -141,6 +144,37 @@ class CitizensCartelNpcsTest {
         verify(dealer, never()).interact(any(), any());
     }
 
+    @Test void leftClickEnforcerForwardsToTheSameInteractionHandler() {
+        when(metadata.get(CitizensCartelNpcs.ROLE, "")).thenReturn("enforcer");
+        Player clicker = mock(Player.class);
+        NPCLeftClickEvent event = mock(NPCLeftClickEvent.class);
+        when(event.getNPC()).thenReturn(npc);
+        when(event.getClicker()).thenReturn(clicker);
+        service.onLeftClick(event);
+        verify(event).setCancelled(true);
+        verify(dealer).interactEnforcer(clicker, entity);
+        verify(dealer, never()).interact(any(), any());
+    }
+
+    @Test void leftClickOtherNpcsIsIgnored() {
+        when(metadata.get(CitizensCartelNpcs.ROLE, "")).thenReturn("buyer");
+        NPCLeftClickEvent event = mock(NPCLeftClickEvent.class);
+        when(event.getNPC()).thenReturn(npc);
+        service.onLeftClick(event);
+        verify(event, never()).setCancelled(true);
+        verify(dealer, never()).interactEnforcer(any(), any());
+    }
+
+    @Test void sprintingRequiresTheTargetToMoveAway() {
+        World world = location.getWorld();
+        Location pursuer = new Location(world, 0, 64, 0);
+        Location previous = new Location(world, 5, 64, 0);
+        assertTrue(CitizensCartelNpcs.runningAway(pursuer, previous, new Location(world, 5.3, 64, 0), true));
+        assertFalse(CitizensCartelNpcs.runningAway(pursuer, previous, new Location(world, 4.7, 64, 0), true));
+        assertFalse(CitizensCartelNpcs.runningAway(pursuer, previous, previous, true));
+        assertFalse(CitizensCartelNpcs.runningAway(pursuer, previous, new Location(world, 5.3, 64, 0), false));
+    }
+
     @Test void unrelatedCitizensNpcsAreIgnored() {
         when(metadata.get(CitizensCartelNpcs.ROLE, "")).thenReturn("");
         NPCRightClickEvent event = mock(NPCRightClickEvent.class);
@@ -163,6 +197,8 @@ class CitizensCartelNpcsTest {
         assertTrue(enforcer.approach(target));
         verify(navigator).setTarget(target, false);
         verify(parameters).stuckAction(any());
+        verify(parameters).useNewPathfinder(true);
+        verify(parameters).updatePathRate(10);
         enforcer.stop();
         verify(navigator).cancelNavigation();
         // Navigation is attempted even if a preliminary path check would return false.

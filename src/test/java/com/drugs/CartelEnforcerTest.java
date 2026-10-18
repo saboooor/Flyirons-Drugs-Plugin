@@ -25,6 +25,7 @@ import static org.mockito.Mockito.*;
 class CartelEnforcerTest {
     private MockedStatic<Bukkit> bukkit;
     private MockedStatic<DrugRegistry> registry;
+    private MockedStatic<EnforcerGuide> guide;
     private Player player;
     private Player npc;
     private CartelNpcs npcs;
@@ -37,6 +38,7 @@ class CartelEnforcerTest {
 
     @BeforeEach
     void setup() {
+        guide = mockStatic(EnforcerGuide.class);
         bukkit = mockStatic(Bukkit.class);
         registry = mockStatic(DrugRegistry.class);
         registry.when(() -> DrugRegistry.isDrugRegistered("joint")).thenReturn(true);
@@ -92,7 +94,7 @@ class CartelEnforcerTest {
         enforcer = new CartelEnforcer(plugin, dealer, time::get);
     }
 
-    @AfterEach void cleanup() { registry.close(); bukkit.close(); }
+    @AfterEach void cleanup() { registry.close(); bukkit.close(); guide.close(); }
 
     private void spawnAndApproach() {
         assertTrue(enforcer.spawn(player, "joint", 16, true));
@@ -178,7 +180,7 @@ class CartelEnforcerTest {
         interact(player);
         interact(player);
         verify(player).sendMessage(contains("16 joint within 10s"));
-        verify(player).sendMessage(contains("Throw 16 more joint"));
+        guide.verify(() -> EnforcerGuide.open(any(DrugsV2.class), eq(player), eq("joint")), times(2));
         verify(dealer, never()).sellDropped(any(), any(), anyInt(), any());
         verify(player, never()).getInventory();
     }
@@ -208,6 +210,13 @@ class CartelEnforcerTest {
         assertFalse(enforcer.spawn(player, "joint", 16, false));
     }
 
+    @Test void operatorWithoutExplicitBypassCanHaveAnEncounter() {
+        when(player.isOp()).thenReturn(true);
+        when(player.hasPermission("drugs.cartel.enforcer.bypass")).thenReturn(true);
+        when(player.isPermissionSet("drugs.cartel.enforcer.bypass")).thenReturn(false);
+        assertTrue(enforcer.spawn(player, "joint", 16, true));
+    }
+
     @Test void rejectsBypassedPlayersAndInvalidOrUnpricedDemands() {
         assertFalse(enforcer.spawn(player, "joint", 0, true));
         assertFalse(enforcer.spawn(player, "joint", 2305, true));
@@ -215,6 +224,7 @@ class CartelEnforcerTest {
         config.set("prices.joint", 0);
         assertFalse(enforcer.spawn(player, "joint", 16, true));
         config.set("prices.joint", 15);
+        when(player.isPermissionSet("drugs.cartel.enforcer.bypass")).thenReturn(true);
         when(player.hasPermission("drugs.cartel.enforcer.bypass")).thenReturn(true);
         assertFalse(enforcer.spawn(player, "joint", 16, true));
     }
@@ -339,6 +349,7 @@ class CartelEnforcerTest {
     }
 
     @Test void commandReportsBypassPermissionAndGameMode() {
+        when(player.isPermissionSet("drugs.cartel.enforcer.bypass")).thenReturn(true);
         when(player.hasPermission("drugs.cartel.enforcer.bypass")).thenReturn(true);
         runExplicitCommand();
         verify(player).sendMessage(contains("has drugs.cartel.enforcer.bypass"));
