@@ -1,0 +1,197 @@
+package com.drugs;
+
+import net.citizensnpcs.api.CitizensAPI;
+import net.citizensnpcs.api.ai.Navigator;
+import net.citizensnpcs.api.ai.NavigatorParameters;
+import net.citizensnpcs.api.event.NPCRightClickEvent;
+import net.citizensnpcs.api.npc.MetadataStore;
+import net.citizensnpcs.api.npc.NPC;
+import net.citizensnpcs.api.npc.NPCRegistry;
+import net.citizensnpcs.trait.SkinTrait;
+import org.bukkit.*;
+import org.bukkit.configuration.file.YamlConfiguration;
+import org.bukkit.entity.*;
+import org.bukkit.persistence.PersistentDataContainer;
+import org.bukkit.persistence.PersistentDataType;
+import org.bukkit.plugin.PluginManager;
+import org.bukkit.scheduler.BukkitScheduler;
+import org.junit.jupiter.api.*;
+import org.mockito.ArgumentCaptor;
+import org.mockito.MockedStatic;
+
+import java.nio.charset.StandardCharsets;
+import java.util.Base64;
+import java.util.Collections;
+import java.util.List;
+import java.util.logging.Logger;
+
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.*;
+
+class CitizensCartelNpcsTest {
+    private MockedStatic<CitizensAPI> citizens;
+    private MockedStatic<Bukkit> bukkit;
+    private DrugsV2 plugin;
+    private CartelDealer dealer;
+    private CitizensCartelNpcs service;
+    private NPCRegistry persistent;
+    private NPCRegistry temporary;
+    private NPC npc;
+    private MetadataStore metadata;
+    private SkinTrait skin;
+    private Player entity;
+    private YamlConfiguration config;
+    private PluginManager plugins;
+    private Location location;
+
+    @BeforeEach void setup() {
+        citizens = mockStatic(CitizensAPI.class);
+        bukkit = mockStatic(Bukkit.class);
+        bukkit.when(Bukkit::getWorlds).thenReturn(List.of());
+        plugin = mock(DrugsV2.class);
+        when(plugin.getName()).thenReturn("FlyironsDrugs");
+        when(plugin.getLogger()).thenReturn(Logger.getAnonymousLogger());
+        Server server = mock(Server.class);
+        when(plugin.getServer()).thenReturn(server);
+        plugins = mock(PluginManager.class);
+        when(server.getPluginManager()).thenReturn(plugins);
+        when(plugins.isPluginEnabled("Citizens")).thenReturn(true);
+        when(server.getScheduler()).thenReturn(mock(BukkitScheduler.class));
+        dealer = mock(CartelDealer.class);
+        config = new YamlConfiguration();
+        when(dealer.settings()).thenReturn(config);
+        persistent = mock(NPCRegistry.class);
+        temporary = mock(NPCRegistry.class);
+        citizens.when(CitizensAPI::getNPCRegistry).thenReturn(persistent);
+        citizens.when(() -> CitizensAPI.createInMemoryNPCRegistry("flyirons-cartel-enforcers")).thenReturn(temporary);
+        when(persistent.iterator()).thenAnswer(call -> Collections.emptyIterator());
+        npc = mock(NPC.class);
+        metadata = mock(MetadataStore.class);
+        when(npc.data()).thenReturn(metadata);
+        skin = mock(SkinTrait.class);
+        when(npc.getOrAddTrait(SkinTrait.class)).thenReturn(skin);
+        entity = mock(Player.class);
+        when(entity.isValid()).thenReturn(true);
+        when(npc.getEntity()).thenReturn(entity);
+        when(npc.isSpawned()).thenReturn(true);
+        when(npc.spawn(any(Location.class))).thenReturn(true);
+        when(npc.getOwningRegistry()).thenReturn(persistent);
+        when(persistent.createNPC(eq(EntityType.PLAYER), anyString())).thenReturn(npc);
+        when(temporary.createNPC(eq(EntityType.PLAYER), anyString())).thenReturn(npc);
+        location = new Location(mock(World.class), 1, 64, 1);
+        service = new CitizensCartelNpcs(plugin, dealer);
+    }
+
+    @AfterEach void cleanup() { citizens.close(); bukkit.close(); }
+
+    @Test void buyersAreProtectedPlayerNpcsWithBundledSignedSkinAndPersistence() {
+        CartelNpcs.Character buyer = service.create(location, "buyer");
+        assertNotNull(buyer);
+        assertSame(entity, buyer.entity());
+        assertTrue(buyer.valid());
+        verify(persistent).createNPC(EntityType.PLAYER, "Cartel Buyer");
+        verify(metadata).setPersistent(CitizensCartelNpcs.ROLE, "buyer");
+        verify(npc).setProtected(true);
+        verify(persistent).saveToStore();
+        ArgumentCaptor<String> signature = ArgumentCaptor.forClass(String.class);
+        ArgumentCaptor<String> texture = ArgumentCaptor.forClass(String.class);
+        verify(skin).setSkinPersistent(eq("cartel-default"), signature.capture(), texture.capture());
+        assertFalse(signature.getValue().isBlank());
+        String decoded = new String(Base64.getDecoder().decode(texture.getValue()), StandardCharsets.UTF_8);
+        assertTrue(decoded.contains("textures.minecraft.net/texture/"));
+        verify(skin, never()).setSkinName(anyString());
+    }
+
+    @Test void enforcersUseMemoryOnlyRegistryAndUsernameOverride() {
+        config.set("npc.skin-name", "MyCartelSkin");
+        assertNotNull(service.create(location, "enforcer"));
+        verify(temporary).createNPC(EntityType.PLAYER, "Cartel Enforcer");
+        verify(persistent, never()).createNPC(any(), anyString());
+        verify(skin).clearTexture();
+        verify(skin).setSkinName("MyCartelSkin");
+        verify(skin, never()).setSkinPersistent(anyString(), anyString(), anyString());
+    }
+
+    @Test void failedSpawnDestroysRegistryEntry() {
+        when(npc.spawn(location)).thenReturn(false);
+        assertNull(service.create(location, "buyer"));
+        verify(npc).destroy();
+    }
+
+    @Test void clicksForwardOnceToTheCorrectCartelHandler() {
+        when(metadata.get(CitizensCartelNpcs.ROLE, "")).thenReturn("enforcer");
+        Player clicker = mock(Player.class);
+        NPCRightClickEvent event = mock(NPCRightClickEvent.class);
+        when(event.getNPC()).thenReturn(npc);
+        when(event.getClicker()).thenReturn(clicker);
+        service.onRightClick(event);
+        verify(event).setCancelled(true);
+        verify(dealer, times(1)).interactEnforcer(clicker, entity);
+        verify(dealer, never()).interact(any(), any());
+    }
+
+    @Test void unrelatedCitizensNpcsAreIgnored() {
+        when(metadata.get(CitizensCartelNpcs.ROLE, "")).thenReturn("");
+        NPCRightClickEvent event = mock(NPCRightClickEvent.class);
+        when(event.getNPC()).thenReturn(npc);
+        service.onRightClick(event);
+        verify(event, never()).setCancelled(true);
+        verify(dealer, never()).interactEnforcer(any(), any());
+        verify(dealer, never()).interact(any(), any());
+    }
+
+    @Test void enforcersNavigateWithCitizensAndDoNotTeleportWhenStuck() {
+        Navigator navigator = mock(Navigator.class);
+        NavigatorParameters parameters = mock(NavigatorParameters.class, RETURNS_SELF);
+        when(npc.getNavigator()).thenReturn(navigator);
+        when(navigator.getDefaultParameters()).thenReturn(parameters);
+        Player target = mock(Player.class);
+        when(target.getLocation()).thenReturn(location);
+        when(navigator.canNavigateTo(location)).thenReturn(true);
+        CartelNpcs.Character enforcer = service.create(location, "enforcer");
+        assertTrue(enforcer.approach(target));
+        verify(navigator).setTarget(target, false);
+        verify(parameters).stuckAction(any());
+        enforcer.stop();
+        verify(navigator).cancelNavigation();
+        // Navigation is attempted even if a preliminary path check would return false.
+        verify(navigator, never()).canNavigateTo(any(Location.class));
+        when(npc.isSpawned()).thenReturn(false);
+        assertFalse(enforcer.approach(target));
+    }
+
+    @Test void legacyBuyersAreReplacedOnlyAfterSuccessfulPlayerSpawn() {
+        World world = mock(World.class);
+        Villager old = mock(Villager.class);
+        PersistentDataContainer data = mock(PersistentDataContainer.class);
+        when(old.getPersistentDataContainer()).thenReturn(data);
+        when(data.has(new NamespacedKey(plugin, "cartel_dealer"), PersistentDataType.BYTE)).thenReturn(true);
+        when(old.getLocation()).thenReturn(location);
+        when(world.getEntitiesByClass(Villager.class)).thenReturn(List.of(old));
+        bukkit.when(Bukkit::getWorlds).thenReturn(List.of(world));
+        when(npc.spawn(location)).thenReturn(false);
+        service.reload();
+        verify(old, never()).remove();
+        when(npc.spawn(location)).thenReturn(true);
+        service.reload();
+        verify(old).remove();
+    }
+
+    @Test void shutdownDestroysTemporaryRegistryAndKeepsBuyers() {
+        service.shutdown();
+        service.shutdown();
+        verify(temporary, times(1)).deregisterAll();
+        verify(persistent, never()).deregisterAll();
+        verify(persistent).saveToStore();
+        citizens.verify(() -> CitizensAPI.removeNamedNPCRegistry("flyirons-cartel-enforcers"));
+    }
+
+    @Test void missingCitizensLeavesTheRestOfThePluginUsable() {
+        when(plugins.isPluginEnabled("Citizens")).thenReturn(false);
+        CartelNpcs disabled = CartelNpcs.create(plugin, dealer);
+        assertNull(disabled.create(location, "buyer"));
+        assertNull(disabled.find(entity, "buyer"));
+        disabled.reload();
+        disabled.shutdown();
+    }
+}

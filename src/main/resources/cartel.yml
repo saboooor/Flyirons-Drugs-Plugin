@@ -20,6 +20,11 @@ prices:
 #     reggie: 10.0
 strain-prices: {}
 
+# Player NPCs require Citizens. Blank uses the bundled camouflage-style cartel skin.
+# Set a Minecraft username here to use that account's skin instead, then /cartel reload.
+npc:
+  skin-name: ""
+
 # Temporary cartel encounters. Existing cartel.yml files use these defaults if absent.
 enforcer:
   enabled: true                 # Automatic spawns; admins can still trigger encounters manually.
@@ -37,10 +42,10 @@ enforcer:
   warning-interval-seconds: 15
   failure-damage: 0             # Dialogue only by default. Optional nearby damage in HP (2 = 1 heart).
   # Optional damage is capped at 20 HP and at health minus 1; respects damage event cancellation.
-  # Placeholders: {drug}, {amount}, {seconds}; supports & color codes.
+  # Placeholders: {drug}, {amount}, {remaining}, {seconds}; supports & color codes.
   messages:
     arrival: "&8Someone from the cartel is heading your way."
-    demand: "&4Cartel: &cSell me {amount} {drug} within {seconds}s, or you'll answer to the cartel. Right-click me with the full amount in your inventory. You'll be paid."
-    warning: "&cThe cartel doesn't like waiting. Sell me {amount} {drug}. You have {seconds}s left."
+    demand: "&4Cartel: &cSell me {amount} {drug} within {seconds}s, or you'll answer to the cartel. Throw the drugs near me. Smaller deliveries count. You'll be paid."
+    warning: "&cThe cartel doesn't like waiting. Throw {remaining} more {drug} near me. You have {seconds}s left."
     failure: "&4Cartel: &cYou refused our deal. We'll remember this. Watch your back."
     success: "&2Cartel: &aGood. We can do business. You're clear."

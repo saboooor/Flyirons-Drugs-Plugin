@@ -8,29 +8,33 @@ import org.bukkit.entity.*;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.entity.EntityDamageEvent;
-import org.bukkit.event.inventory.InventoryClickEvent;
-import org.bukkit.event.inventory.InventoryDragEvent;
-import org.bukkit.event.player.PlayerInteractEntityEvent;
 import org.bukkit.inventory.*;
 import org.bukkit.inventory.meta.ItemMeta;
-import org.bukkit.persistence.PersistentDataType;
 
 import java.io.File;
 import java.util.*;
 
-/** Persistent villager buyers; all inventory and economy operations run on the server thread. */
+/** Persistent player NPC buyers; all inventory and economy operations run on the server thread. */
 public final class CartelDealer implements Listener, CommandExecutor, TabCompleter {
     private final DrugsV2 plugin;
-    private final NamespacedKey dealerKey;
+    private CartelNpcs npcs;
     private FileConfiguration config;
     private CartelEnforcer enforcer;
+    private final Set<UUID> sellingDrops = new HashSet<>();
 
     public CartelDealer(DrugsV2 plugin) {
         this.plugin = plugin;
-        dealerKey = new NamespacedKey(plugin, "cartel_dealer");
         File file = new File(plugin.getDataFolder(), "cartel.yml");
         if (!file.exists()) plugin.saveResource("cartel.yml", false);
         config = YamlConfiguration.loadConfiguration(file);
+    }
+
+    void setNpcs(CartelNpcs npcs) { this.npcs = npcs; }
+
+    CartelNpcs npcs() { return npcs; }
+
+    void interactEnforcer(Player player, Entity entity) {
+        if (enforcer != null) enforcer.interact(player, entity);
     }
 
     void setEnforcer(CartelEnforcer enforcer) { this.enforcer = enforcer; }
@@ -38,7 +42,7 @@ public final class CartelDealer implements Listener, CommandExecutor, TabComplet
     FileConfiguration settings() { return config; }
 
     private boolean isDealer(Entity entity) {
-        return entity instanceof Villager && entity.getPersistentDataContainer().has(dealerKey, PersistentDataType.BYTE);
+        return npcs != null && npcs.find(entity, "buyer") != null;
     }
 
     @Override
@@ -54,6 +58,7 @@ public final class CartelDealer implements Listener, CommandExecutor, TabComplet
         if (args[0].equalsIgnoreCase("reload")) {
             config = YamlConfiguration.loadConfiguration(new File(plugin.getDataFolder(), "cartel.yml"));
             if (enforcer != null) enforcer.reload();
+            if (npcs != null) npcs.reload();
             sender.sendMessage(ChatColor.GREEN + "Cartel prices and encounters reloaded.");
             return true;
         }
@@ -63,23 +68,16 @@ public final class CartelDealer implements Listener, CommandExecutor, TabComplet
         }
         switch (args[0].toLowerCase(Locale.ROOT)) {
             case "create" -> {
-                player.getWorld().spawn(player.getLocation(), Villager.class, villager -> {
-                    villager.getPersistentDataContainer().set(dealerKey, PersistentDataType.BYTE, (byte) 1);
-                    villager.setCustomName(ChatColor.DARK_GREEN + "Cartel Buyer");
-                    villager.setCustomNameVisible(true);
-                    villager.setAI(false);
-                    villager.setInvulnerable(true);
-                    villager.setSilent(true);
-                    villager.setCollidable(false);
-                    villager.setPersistent(true);
-                    villager.setRemoveWhenFarAway(false);
-                });
-                player.sendMessage(ChatColor.GREEN + "Cartel buyer created. Right-click to sell.");
+                if (npcs == null || npcs.create(player.getLocation(), "buyer") == null) {
+                    player.sendMessage(ChatColor.RED + "Could not create buyer. Install and enable Citizens for your server version.");
+                    return true;
+                }
+                player.sendMessage(ChatColor.GREEN + "Cartel buyer created. Throw drugs near the buyer to sell.");
             }
             case "remove" -> {
                 Entity target = player.getTargetEntity(5);
                 if (target != null && isDealer(target)) {
-                    target.remove();
+                    npcs.find(target, "buyer").destroy();
                     player.sendMessage(ChatColor.GREEN + "Cartel buyer removed.");
                 } else player.sendMessage(ChatColor.RED + "Look directly at a cartel buyer within five blocks.");
             }
@@ -106,30 +104,13 @@ public final class CartelDealer implements Listener, CommandExecutor, TabComplet
                 .filter(s -> s.startsWith(args[0].toLowerCase(Locale.ROOT))).toList();
     }
 
-    @EventHandler(ignoreCancelled = true)
-    public void onInteract(PlayerInteractEntityEvent event) {
-        if (!isDealer(event.getRightClicked())) return;
-        event.setCancelled(true);
-        if (event.getHand() != EquipmentSlot.HAND) return;
-        Player player = event.getPlayer();
+    void interact(Player player, Entity entity) {
+        if (!isDealer(entity)) return;
         if (!player.hasPermission("drugs.cartel.sell")) {
             player.sendMessage(ChatColor.RED + "You cannot sell to cartel buyers.");
             return;
         }
-        DealerMenu menu = new DealerMenu(event.getRightClicked().getUniqueId());
-        menu.inventory = Bukkit.createInventory(menu, 9, "Cartel Buyer");
-        menu.inventory.setItem(2, button(Material.EMERALD, "Sell held stack", "Sells the stack in your main hand."));
-        menu.inventory.setItem(6, button(Material.CHEST, "Sell all drugs", "Sells all priced drugs in your inventory."));
-        player.openInventory(menu.inventory);
-    }
-
-    private ItemStack button(Material material, String name, String lore) {
-        ItemStack item = new ItemStack(material);
-        ItemMeta meta = item.getItemMeta();
-        meta.setDisplayName(ChatColor.GREEN + name);
-        meta.setLore(List.of(ChatColor.GRAY + lore));
-        item.setItemMeta(meta);
-        return item;
+        player.sendMessage(ChatColor.GREEN + "Throw drugs within two blocks of me to sell them.");
     }
 
     @EventHandler
@@ -137,30 +118,19 @@ public final class CartelDealer implements Listener, CommandExecutor, TabComplet
         if (isDealer(event.getEntity())) event.setCancelled(true);
     }
 
-    @EventHandler
-    public void onDrag(InventoryDragEvent event) {
-        if (event.getView().getTopInventory().getHolder() instanceof DealerMenu) event.setCancelled(true);
-    }
-
-    @EventHandler
-    public void onClick(InventoryClickEvent event) {
-        if (!(event.getView().getTopInventory().getHolder() instanceof DealerMenu menu)) return;
-        event.setCancelled(true);
-        if (!(event.getWhoClicked() instanceof Player player)) return;
-        if (event.getRawSlot() != 2 && event.getRawSlot() != 6) return;
-        Entity dealer = Bukkit.getEntity(menu.dealer);
-        if (!player.hasPermission("drugs.cartel.sell") || dealer == null || !dealer.isValid()
-                || !isDealer(dealer) || dealer.getWorld() != player.getWorld()
-                || dealer.getLocation().distanceSquared(player.getLocation()) > 36) {
-            player.closeInventory();
-            return;
+    boolean acceptDrop(Player player, Item item) {
+        if (npcs == null || !item.isValid() || !player.hasPermission("drugs.cartel.sell")) return false;
+        for (Entity entity : item.getNearbyEntities(2, 2, 2)) {
+            if (isDealer(entity) && entity instanceof LivingEntity living && living.hasLineOfSight(item)
+                    && entity.getLocation().distanceSquared(item.getLocation()) <= 4) {
+                Payments payments = payments();
+                if (payments == null) {
+                    player.sendMessage(ChatColor.RED + "The buyer cannot pay right now. Your items remain on the ground.");
+                } else sellDropped(player, item, item.getItemStack().getAmount(), payments);
+                return true;
+            }
         }
-        Payments payments = payments();
-        if (payments == null) {
-            player.sendMessage(ChatColor.RED + "Selling requires Vault and an enabled economy provider.");
-            return;
-        }
-        sell(player, event.getRawSlot() == 6, payments);
+        return false;
     }
 
     Payments payments() {
@@ -183,77 +153,44 @@ public final class CartelDealer implements Listener, CommandExecutor, TabComplet
         return Double.isFinite(value) && value > 0 ? value : 0;
     }
 
-    void sell(Player player, boolean all, Payments payments) {
-        PlayerInventory inventory = player.getInventory();
-        Map<Integer, ItemStack> sold = new LinkedHashMap<>();
-        double total = 0;
-        int count = 0;
-        for (int slot = 0; slot < inventory.getStorageContents().length; slot++) {
-            if (!all && slot != inventory.getHeldItemSlot()) continue;
-            ItemStack item = inventory.getItem(slot);
-            double unit = price(item, config);
-            if (unit == 0) continue;
-            sold.put(slot, item.clone());
-            total += unit * item.getAmount();
-            count += item.getAmount();
-        }
-        if (sold.isEmpty() || !Double.isFinite(total)) {
-            player.sendMessage(ChatColor.RED + "You have no drugs this buyer accepts.");
-            return;
-        }
-        Map<Integer, ItemStack> remaining = new LinkedHashMap<>();
-        sold.keySet().forEach(slot -> remaining.put(slot, null));
-        completeSale(player, sold, remaining, total, count, payments);
-    }
-
-    boolean sellDemand(Player player, String drug, int amount, Payments payments) {
-        if (amount <= 0 || amount > 2304) return false;
-        PlayerInventory inventory = player.getInventory();
-        Map<Integer, ItemStack> original = new LinkedHashMap<>();
-        Map<Integer, ItemStack> remaining = new LinkedHashMap<>();
-        int needed = amount;
-        double total = 0;
-        for (int slot = 0; slot < inventory.getStorageContents().length && needed > 0; slot++) {
-            ItemStack item = inventory.getItem(slot);
-            double unit = price(item, config);
-            if (unit == 0 || !drug.equals(DrugItemMetadata.getDrugId(item.getItemMeta()))) continue;
-            int taken = Math.min(needed, item.getAmount());
-            original.put(slot, item.clone());
-            ItemStack leftover = null;
-            if (taken < item.getAmount()) {
-                leftover = item.clone();
-                leftover.setAmount(item.getAmount() - taken);
-            }
-            remaining.put(slot, leftover);
-            needed -= taken;
-            total += taken * unit;
-        }
-        if (needed != 0 || !Double.isFinite(total)) {
-            player.sendMessage(ChatColor.RED + "Bring " + amount + " " + drug + " to complete this sale. Nothing was taken.");
-            return false;
-        }
-        return completeSale(player, original, remaining, total, amount, payments);
-    }
-
-    private boolean completeSale(Player player, Map<Integer, ItemStack> original,
-                                 Map<Integer, ItemStack> remaining, double total, int count, Payments payments) {
-        PlayerInventory inventory = player.getInventory();
-        // Remove before calling the provider; restore on a rejected or throwing deposit.
-        remaining.forEach(inventory::setItem);
-        boolean paid;
+    int sellDropped(Player player, Item item, int limit, Payments payments) {
+        if (!item.isValid() || limit <= 0 || !sellingDrops.add(item.getUniqueId())) return 0;
+        int pickupDelay = item.getPickupDelay();
         try {
-            paid = payments.deposit(player, total);
-        } catch (RuntimeException exception) {
-            plugin.getLogger().warning("Cartel payment failed: " + exception.getMessage());
-            paid = false;
+            ItemStack original = item.getItemStack();
+            double unit = price(original, config);
+            int count = Math.min(limit, original.getAmount());
+            double total = unit * count;
+            if (unit == 0 || count <= 0 || !Double.isFinite(total)) return 0;
+            // This is synchronous on the server thread. Block pickup while the provider runs;
+            // mutate the stack only after a successful deposit, leaving failures untouched.
+            item.setPickupDelay(Integer.MAX_VALUE);
+            boolean paid;
+            try {
+                paid = payments.deposit(player, total);
+            } catch (RuntimeException exception) {
+                plugin.getLogger().warning("Cartel payment failed: " + exception.getMessage());
+                paid = false;
+            }
+            if (!paid) {
+                player.sendMessage(ChatColor.RED + "Payment failed. Your items remain on the ground.");
+                return 0;
+            }
+            if (count == original.getAmount()) item.remove();
+            else {
+                ItemStack remaining = original.clone();
+                remaining.setAmount(original.getAmount() - count);
+                item.setItemStack(remaining);
+            }
+            String formatted;
+            try { formatted = payments.format(total); }
+            catch (RuntimeException exception) { formatted = Double.toString(total); }
+            player.sendMessage(ChatColor.GREEN + "Sold " + count + " items for " + formatted + ".");
+            return count;
+        } finally {
+            if (item.isValid()) item.setPickupDelay(pickupDelay);
+            sellingDrops.remove(item.getUniqueId());
         }
-        if (!paid) {
-            original.forEach(inventory::setItem);
-            player.sendMessage(ChatColor.RED + "Payment failed. Your items have been returned.");
-            return false;
-        }
-        player.sendMessage(ChatColor.GREEN + "Sold " + count + " items for " + payments.format(total) + ".");
-        return true;
     }
 
     interface Payments {
@@ -276,10 +213,4 @@ public final class CartelDealer implements Listener, CommandExecutor, TabComplet
         public String format(double amount) { return economy.format(amount); }
     }
 
-    private static final class DealerMenu implements InventoryHolder {
-        private final UUID dealer;
-        private Inventory inventory;
-        private DealerMenu(UUID dealer) { this.dealer = dealer; }
-        @Override public Inventory getInventory() { return inventory; }
-    }
 }

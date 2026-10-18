@@ -295,26 +295,39 @@ Finished items remain available through the existing admin give command.
 
 ## Cartel NPC Buyers
 
-Install **Vault** and an economy provider such as **EssentialsX Economy**, then restart the server. The rest of the drugs plugin works without them; cartel sales require an enabled economy provider.
+Install **Citizens** (a build compatible with your Minecraft server), **Vault**, and an economy provider such as **EssentialsX Economy**, then restart the server. Cartel buyers and enforcers are player NPCs with a bundled camouflage-style cartel skin. Other drug features work without Citizens; cartel NPCs require it.
 
-- `/cartel create` — spawn a stationary, invulnerable villager buyer at your position.
+- `/cartel create` — spawn a stationary, protected player NPC buyer at your position.
 - `/cartel remove` — remove the buyer you are looking at within five blocks.
 - `/cartel reload` — reload prices from `plugins/FlyironsDrugs/cartel.yml`.
 
-Players right-click the buyer and choose **Sell held stack** or **Sell all drugs**. Sell all scans the main inventory and hotbar, excluding armor and the offhand. Buyers persist with the world's entity data across restarts. Players must remain near the buyer to sell.
+Players **throw drug items within two blocks of the buyer** to sell the dropped stack. Right-clicking the buyer explains how to deliver; there is no selling menu. Buyers persist in Citizens' NPC storage across restarts. Existing villager buyers migrate at their original locations when their chunks load with Citizens enabled. Players must remain near the buyer to sell.
 
-Review the example unit prices in `cartel.yml` before opening sales. Missing, zero, negative, or non-finite prices disable a drug's sales. Optional `strain-prices.<drug>.<strain>` entries override its base unit price. Only registered drug items carrying the plugin's metadata are accepted; renamed vanilla items, planting stock, and partially used cartridges are rejected. Cartridges have no default sale price. Failed economy deposits restore the offered items.
+Review the example unit prices in `cartel.yml` before opening sales. Missing, zero, negative, or non-finite prices disable a drug's sales. Optional `strain-prices.<drug>.<strain>` entries override its base unit price. Only registered drug items carrying the plugin's metadata are accepted; renamed vanilla items, planting stock, and partially used cartridges are rejected. Cartridges have no default sale price. Failed economy deposits leave the dropped items untouched on the ground. Only genuine player drops are accepted; tracked drops cannot merge with other stacks, preserving the seller attribution.
 
-Permissions: `drugs.cartel.sell` defaults to everyone; `drugs.cartel.admin` defaults to operators. NPC creation needs no Citizens plugin. Daily limits and bulk delivery bonuses are not part of this version.
+Permissions: `drugs.cartel.sell` defaults to everyone; `drugs.cartel.admin` defaults to operators. NPC creation requires Citizens. Keep its NPC data when backing up the server. Daily limits and bulk delivery bonuses are not part of this version.
 
 ### Roaming cartel enforcers
 
-Cartel enforcers can spawn on nearby walkable ground, walk toward a survival/adventure player, and demand a specific drug quantity. Each encounter chooses a **random priced drug and a random quantity (8–32 by default)**, with a 90-second deadline. The timer begins when the enforcer gets close enough to speak, with warnings every 15 seconds. Right-click the enforcer with the full quantity in your main inventory/hotbar to sell exactly that amount at the configured cartel prices, including strain price overrides. Excess items remain in your inventory. Ordinary buyer sales do not count toward this demand.
+Cartel enforcers can spawn on nearby walkable ground, walk toward a survival/adventure player, and demand a specific drug quantity. Each encounter chooses a **random priced drug and a random quantity (8–32 by default)**, with a 90-second deadline. The timer begins when the enforcer gets close enough to speak, with warnings every 15 seconds. Throw the requested drug within two blocks of your enforcer to deliver it at the configured cartel prices, including strain price overrides. Smaller deliveries accumulate toward the demand and are paid as accepted. Excess items remain on the ground; wrong drugs and other players' drops do not count. Partial deliveries already sold remain paid even if the encounter later expires or is called off. Ordinary buyer sales do not count toward this demand.
 
 Use `/cartel enforcer` to test a random demand on yourself, or `/cartel enforcer <player> <drug> <amount>` to choose the player, registered drug ID, and quantity. Both commands require `drugs.cartel.admin`. Manual encounters ignore the player's cooldown and the automatic-spawning toggle, but still require an eligible player, working economy, positive base price, safe spawn location, and no existing encounter for that player.
 
 Configure the `enforcer` section in `cartel.yml`, then run `/cartel reload`. Automatic checks default to every 300 seconds, with a 25% chance per eligible player, a 30-minute per-player cooldown after each encounter, and at most eight active NPCs. `min-amount` and `max-amount` set the inclusive random quantity range (clamped to 1–2304). Drugs are chosen uniformly from registered drugs with positive, finite base prices; missing or disabled prices exclude them. The chosen drug and quantity stay fixed for that encounter. Legacy `enforcer.drug` and `enforcer.amount` entries are ignored. Explicit admin commands still accept a chosen drug and quantity. Set `enabled: false` to disable automatic encounters. Existing config files use the same defaults when the section is missing; copy the `enforcer` section from the bundled [cartel.yml](src/main/resources/cartel.yml) to expose all settings.
 
-Customize the arrival, demand, warning, failure, and success dialogue under `enforcer.messages`. Failure produces threats only by default. Optional `failure-damage` is measured in HP, applies only within six blocks, and is capped at 20 HP and the player's health minus one before normal damage events/modifiers. Set it to `0` for dialogue only. Grant `drugs.cartel.enforcer.bypass` to exempt a player (not granted to operators automatically).
+Use `{remaining}` in warnings for the quantity still needed. Customize the arrival, demand, warning, failure, and success dialogue under `enforcer.messages`. Failure produces threats only by default. Optional `failure-damage` is measured in HP, applies only within six blocks, and is capped at 20 HP and the player's health minus one before normal damage events/modifiers. Set it to `0` for dialogue only. Grant `drugs.cartel.enforcer.bypass` to exempt a player (not granted to operators automatically).
 
-Enforcers need no Citizens plugin. They cancel without a penalty if they cannot reach the player before the approach timeout, the player dies/disconnects/travels to another world or far away, or the economy becomes unavailable. Reloading cartel settings calls off active demands. NPCs also clean up on chunk unload and plugin shutdown; enforcers and cooldowns are temporary and reset on server restart. Stationary cartel buyers remain persistent.
+Enforcers use Citizens player NPCs and navigation. They cancel without a penalty if they cannot reach the player before the approach timeout, the player dies/disconnects/travels to another world or far away, or the economy becomes unavailable. Reloading cartel settings calls off active demands. NPCs also clean up on chunk unload and plugin shutdown; enforcers and cooldowns are temporary and reset on server restart. Stationary cartel buyers remain persistent.
+
+### Cartel NPC skins
+
+Both buyers and enforcers use the bundled signed camouflage-style skin by default (a snapshot of the public Minecraft skin for `ElChapo`). It does not require a skin lookup at spawn. To use another Minecraft account's skin, add this to `cartel.yml` and run `/cartel reload`:
+
+```yaml
+npc:
+  skin-name: "MinecraftUsername"
+```
+
+Leave `skin-name` blank to restore the bundled skin. Reload updates existing buyers and calls off active enforcer demands; subsequent enforcers use the updated skin. Username-based skins require Citizens to fetch the account's skin from Mojang.
+
+If `/cartel enforcer` cannot start, its error identifies the failed requirement: player mode/permissions, an existing encounter, pricing, economy, NPC provider, safe ground, or NPC spawning. For a Citizens spawn failure, check the console for the associated spawn rejection or exception. Enforcers now attempt navigation without rejecting a new NPC on Citizens' preliminary path check; unreachable players are handled by the approach timeout.

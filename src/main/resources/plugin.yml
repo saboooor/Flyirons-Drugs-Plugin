@@ -3,7 +3,7 @@ version: '${project.version}'
 description: "Flyiron's Drugs: persistent tolerance, addiction, withdrawal, overdose, cures, cannabis strains, and bongs."
 main: com.drugs.DrugsV2
 api-version: '1.21'
-softdepend: [PlaceholderAPI, Vault, Essentials]
+softdepend: [PlaceholderAPI, Vault, Essentials, Citizens]
 
 commands:
   cartel:

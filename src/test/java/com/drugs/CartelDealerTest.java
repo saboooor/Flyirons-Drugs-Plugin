@@ -3,6 +3,8 @@ package com.drugs;
 import org.bukkit.NamespacedKey;
 import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.entity.Player;
+import org.bukkit.entity.Item;
+import java.util.UUID;
 import org.bukkit.inventory.*;
 import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.persistence.*;
@@ -72,92 +74,73 @@ class CartelDealerTest {
         }
     }
 
-    @Test void successfulSaleRemovesOnlyAcceptedStorageItems() {
+
+    private Item dropped(ItemStack stack) {
+        Item item = mock(Item.class);
+        when(item.isValid()).thenReturn(true);
+        when(item.getUniqueId()).thenReturn(UUID.randomUUID());
+        when(item.getItemStack()).thenReturn(stack);
+        when(item.getPickupDelay()).thenReturn(10);
+        return item;
+    }
+
+    @Test void successfulDropPaysAndRemovesFullStack() {
         Player player = mock(Player.class);
-        PlayerInventory inventory = mock(PlayerInventory.class);
-        ItemStack joint = drug("joint", "joint", null);
-        when(player.getInventory()).thenReturn(inventory);
-        when(inventory.getStorageContents()).thenReturn(new ItemStack[36]);
-        when(inventory.getItem(0)).thenReturn(joint);
-        when(inventory.getItem(1)).thenReturn(mock(ItemStack.class));
+        Item item = dropped(drug("joint", "joint", null));
         CartelDealer.Payments payments = mock(CartelDealer.Payments.class);
         when(payments.deposit(player, 45)).thenReturn(true);
-        new CartelDealer(plugin).sell(player, true, payments);
+        assertEquals(3, new CartelDealer(plugin).sellDropped(player, item, 16, payments));
         verify(payments).deposit(player, 45);
-        verify(inventory).setItem(0, null);
-        verify(inventory, never()).setItem(eq(1), any());
-        verify(inventory, never()).setItem(0, joint);
+        verify(item).remove();
+        verify(player, never()).getInventory();
     }
 
-    @Test void failedAndThrowingPaymentsRestoreHeldStack() {
+    @Test void excessDroppedItemsRemainOnGround() {
+        Player player = mock(Player.class);
+        ItemStack joint = drug("joint", "joint", null);
+        ItemStack leftover = mock(ItemStack.class);
+        when(joint.clone()).thenReturn(leftover);
+        Item item = dropped(joint);
+        CartelDealer.Payments payments = mock(CartelDealer.Payments.class);
+        when(payments.deposit(player, 30)).thenReturn(true);
+        assertEquals(2, new CartelDealer(plugin).sellDropped(player, item, 2, payments));
+        verify(leftover).setAmount(1);
+        verify(item).setItemStack(leftover);
+        verify(item, never()).remove();
+        verify(item).setPickupDelay(10);
+    }
+
+    @Test void failedAndThrowingDepositsLeaveDropUntouched() {
         for (boolean throwing : new boolean[]{false, true}) {
             Player player = mock(Player.class);
-            PlayerInventory inventory = mock(PlayerInventory.class);
-            ItemStack joint = drug("joint", "joint", null);
-            when(player.getInventory()).thenReturn(inventory);
-            when(inventory.getStorageContents()).thenReturn(new ItemStack[36]);
-            when(inventory.getHeldItemSlot()).thenReturn(4);
-            when(inventory.getItem(4)).thenReturn(joint);
+            Item item = dropped(drug("joint", "joint", null));
             CartelDealer.Payments payments = mock(CartelDealer.Payments.class);
             if (throwing) when(payments.deposit(player, 45)).thenThrow(new IllegalStateException("offline"));
-            new CartelDealer(plugin).sell(player, false, payments);
-            var order = inOrder(inventory, payments);
-            order.verify(inventory).setItem(4, null);
-            order.verify(payments).deposit(player, 45);
-            order.verify(inventory).setItem(4, joint);
+            assertEquals(0, new CartelDealer(plugin).sellDropped(player, item, 16, payments));
+            verify(item, never()).remove();
+            verify(item, never()).setItemStack(any());
+            verify(item).setPickupDelay(10);
         }
     }
-    @Test void demandTakesExactlyTheRequestedQuantityAcrossStacks() {
+
+    @Test void nestedPaymentCallbackCannotSellSameDropTwice() {
         Player player = mock(Player.class);
-        PlayerInventory inventory = mock(PlayerInventory.class);
-        when(player.getInventory()).thenReturn(inventory);
-        when(inventory.getStorageContents()).thenReturn(new ItemStack[36]);
-        ItemStack first = drug("joint", "joint", null);
-        ItemStack second = drug("joint", "joint", "reggie");
-        ItemStack original = mock(ItemStack.class);
-        ItemStack leftover = mock(ItemStack.class);
-        when(second.clone()).thenReturn(original, leftover);
-        when(inventory.getItem(0)).thenReturn(first);
-        when(inventory.getItem(1)).thenReturn(second);
+        Item item = dropped(drug("joint", "joint", null));
         CartelDealer.Payments payments = mock(CartelDealer.Payments.class);
-        when(payments.deposit(player, 60)).thenReturn(true);
-        assertTrue(new CartelDealer(plugin).sellDemand(player, "joint", 4, payments));
-        verify(inventory).setItem(0, null);
-        verify(leftover).setAmount(2);
-        verify(inventory).setItem(1, leftover);
-        verify(payments).deposit(player, 60);
-        verify(inventory, never()).setItem(1, original);
+        CartelDealer dealer = new CartelDealer(plugin);
+        when(payments.deposit(player, 45)).thenAnswer(call -> {
+            assertEquals(0, dealer.sellDropped(player, item, 16, payments));
+            return true;
+        });
+        assertEquals(3, dealer.sellDropped(player, item, 16, payments));
+        verify(payments, times(1)).deposit(player, 45);
     }
 
-    @Test void insufficientDemandTakesNothingAndPaysNothing() {
+    @Test void invalidOrUnpricedDropsNeverDepositMoney() {
         Player player = mock(Player.class);
-        PlayerInventory inventory = mock(PlayerInventory.class);
-        when(player.getInventory()).thenReturn(inventory);
-        when(inventory.getStorageContents()).thenReturn(new ItemStack[36]);
-        ItemStack joint = drug("joint", "joint", null);
-        when(inventory.getItem(0)).thenReturn(joint);
+        Item item = dropped(mock(ItemStack.class));
         CartelDealer.Payments payments = mock(CartelDealer.Payments.class);
-        assertFalse(new CartelDealer(plugin).sellDemand(player, "joint", 4, payments));
-        verify(inventory, never()).setItem(anyInt(), any());
+        assertEquals(0, new CartelDealer(plugin).sellDropped(player, item, 16, payments));
         verifyNoInteractions(payments);
     }
-
-    @Test void rejectedDemandPaymentRestoresEntireOriginalStack() {
-        Player player = mock(Player.class);
-        PlayerInventory inventory = mock(PlayerInventory.class);
-        when(player.getInventory()).thenReturn(inventory);
-        when(inventory.getStorageContents()).thenReturn(new ItemStack[36]);
-        ItemStack joint = drug("joint", "joint", null);
-        ItemStack original = mock(ItemStack.class);
-        ItemStack leftover = mock(ItemStack.class);
-        when(joint.clone()).thenReturn(original, leftover);
-        when(inventory.getItem(0)).thenReturn(joint);
-        CartelDealer.Payments payments = mock(CartelDealer.Payments.class);
-        assertFalse(new CartelDealer(plugin).sellDemand(player, "joint", 2, payments));
-        var order = inOrder(inventory, payments);
-        order.verify(inventory).setItem(0, leftover);
-        order.verify(payments).deposit(player, 30);
-        order.verify(inventory).setItem(0, original);
-    }
-
 }

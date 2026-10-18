@@ -1,16 +1,13 @@
 package com.drugs;
 
-import com.destroystokyo.paper.entity.Pathfinder;
 import org.bukkit.*;
 import org.bukkit.block.Block;
 import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.entity.Player;
-import org.bukkit.entity.Villager;
-import org.bukkit.event.player.PlayerInteractEntityEvent;
+import org.bukkit.entity.Item;
+import org.bukkit.inventory.ItemStack;
+import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.event.player.PlayerQuitEvent;
-import org.bukkit.inventory.EquipmentSlot;
-import org.bukkit.persistence.PersistentDataContainer;
-import org.bukkit.persistence.PersistentDataType;
 import org.junit.jupiter.api.*;
 import org.mockito.MockedStatic;
 
@@ -20,7 +17,6 @@ import java.util.Set;
 import java.util.HashSet;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicLong;
-import java.util.function.Consumer;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
@@ -30,7 +26,9 @@ class CartelEnforcerTest {
     private MockedStatic<Bukkit> bukkit;
     private MockedStatic<DrugRegistry> registry;
     private Player player;
-    private Villager npc;
+    private Player npc;
+    private CartelNpcs npcs;
+    private CartelNpcs.Character character;
     private CartelDealer dealer;
     private CartelEnforcer enforcer;
     private YamlConfiguration config;
@@ -38,7 +36,6 @@ class CartelEnforcerTest {
     private World world;
 
     @BeforeEach
-    @SuppressWarnings("unchecked")
     void setup() {
         bukkit = mockStatic(Bukkit.class);
         registry = mockStatic(DrugRegistry.class);
@@ -78,26 +75,20 @@ class CartelEnforcerTest {
         when(player.getLocation()).thenReturn(new Location(world, 0, 64, 0));
         bukkit.when(() -> Bukkit.getPlayer(player.getUniqueId())).thenReturn(player);
         bukkit.when(Bukkit::getOnlinePlayers).thenReturn(List.of(player));
-        npc = mock(Villager.class);
+        npc = mock(Player.class);
         when(npc.getUniqueId()).thenReturn(UUID.randomUUID());
         when(npc.isValid()).thenReturn(true);
         when(npc.getWorld()).thenReturn(world);
         when(npc.getLocation()).thenReturn(new Location(world, 1, 64, 0));
         when(npc.hasLineOfSight(player)).thenReturn(true);
-        PersistentDataContainer data = mock(PersistentDataContainer.class);
-        when(npc.getPersistentDataContainer()).thenReturn(data);
-        when(data.has(any(NamespacedKey.class), eq(PersistentDataType.BYTE))).thenReturn(true);
-        Pathfinder pathfinder = mock(Pathfinder.class);
-        Pathfinder.PathResult path = mock(Pathfinder.PathResult.class);
-        when(npc.getPathfinder()).thenReturn(pathfinder);
-        when(pathfinder.findPath(player)).thenReturn(path);
-        when(path.getFinalPoint()).thenReturn(new Location(world, 0, 64, 0));
-        when(pathfinder.moveTo(path, 1.15)).thenReturn(true);
-        when(world.spawn(any(Location.class), eq(Villager.class), any(Consumer.class))).thenAnswer(call -> {
-            Consumer<Villager> configure = call.getArgument(2);
-            configure.accept(npc);
-            return npc;
-        });
+        npcs = mock(CartelNpcs.class);
+        character = mock(CartelNpcs.Character.class);
+        when(dealer.npcs()).thenReturn(npcs);
+        when(npcs.create(any(Location.class), eq("enforcer"))).thenReturn(character);
+        when(npcs.find(npc, "enforcer")).thenReturn(character);
+        when(character.entity()).thenReturn(npc);
+        when(character.valid()).thenReturn(true);
+        when(character.approach(player)).thenReturn(true);
         enforcer = new CartelEnforcer(plugin, dealer, time::get);
     }
 
@@ -108,13 +99,7 @@ class CartelEnforcerTest {
         enforcer.tick();
     }
 
-    private PlayerInteractEntityEvent interaction(Player who) {
-        PlayerInteractEntityEvent event = mock(PlayerInteractEntityEvent.class);
-        when(event.getPlayer()).thenReturn(who);
-        when(event.getRightClicked()).thenReturn(npc);
-        when(event.getHand()).thenReturn(EquipmentSlot.HAND);
-        return event;
-    }
+    private void interact(Player who) { enforcer.interact(who, npc); }
 
     @Test void approachesWarnsAndThreatensAtDeadlineWithNoDefaultDamage() {
         spawnAndApproach();
@@ -125,7 +110,7 @@ class CartelEnforcerTest {
         time.addAndGet(5000);
         enforcer.tick();
         verify(player).sendMessage(contains("Watch your back"));
-        verify(npc).remove();
+        verify(character).destroy();
         verify(player, never()).damage(anyDouble(), any(org.bukkit.entity.Entity.class));
     }
 
@@ -141,43 +126,77 @@ class CartelEnforcerTest {
         verify(player).sendMessage(contains("16 joint within 10s"));
         time.addAndGet(9000);
         enforcer.tick();
-        verify(npc, never()).remove();
+        verify(character, never()).destroy();
     }
 
-    @Test void fulfillmentPaysOnlyOnceAndRemovesEnforcer() {
+
+    private Item delivery(String drug) {
+        Item item = mock(Item.class);
+        when(item.isValid()).thenReturn(true);
+        when(item.getWorld()).thenReturn(world);
+        when(item.getLocation()).thenReturn(new Location(world, 1, 64, 0));
+        when(npc.hasLineOfSight(item)).thenReturn(true);
+        ItemStack stack = mock(ItemStack.class);
+        ItemMeta meta = mock(ItemMeta.class);
+        when(item.getItemStack()).thenReturn(stack);
+        when(stack.getItemMeta()).thenReturn(meta);
+        // Item validation is covered by CartelDealerTest; isolate encounter progress here.
+        return item;
+    }
+
+    @Test void droppedDeliveriesAccumulateAndStopAtRequiredQuantity() {
         spawnAndApproach();
-        when(dealer.sellDemand(eq(player), eq("joint"), eq(16), any())).thenReturn(true);
-        PlayerInteractEntityEvent event = interaction(player);
-        enforcer.onInteract(event);
-        enforcer.onInteract(event);
-        verify(dealer, times(1)).sellDemand(eq(player), eq("joint"), eq(16), any());
-        verify(npc, times(1)).remove();
-        verify(player).sendMessage(contains("You're clear"));
-        verify(event, times(2)).setCancelled(true);
+        Item first = delivery("joint");
+        Item second = delivery("joint");
+        try (MockedStatic<CartelDealer> prices = mockStatic(CartelDealer.class);
+             MockedStatic<DrugItemMetadata> metadata = mockStatic(DrugItemMetadata.class)) {
+            prices.when(() -> CartelDealer.price(any(), any())).thenReturn(15.0);
+            metadata.when(() -> DrugItemMetadata.getDrugId(any(ItemMeta.class))).thenReturn("joint");
+            when(dealer.sellDropped(eq(player), eq(first), eq(16), any())).thenReturn(6);
+            assertTrue(enforcer.acceptDrop(player, first));
+            verify(character, never()).destroy();
+            verify(player).sendMessage(contains("Delivered 6/16"));
+            when(dealer.sellDropped(eq(player), eq(second), eq(10), any())).thenReturn(10);
+            assertTrue(enforcer.acceptDrop(player, second));
+            assertFalse(enforcer.acceptDrop(player, second));
+            verify(character).destroy();
+            verify(player).sendMessage(contains("You're clear"));
+        }
     }
 
     @Test void otherPlayersCannotFulfillSomeonesDemand() {
         spawnAndApproach();
         Player other = mock(Player.class);
         when(other.getUniqueId()).thenReturn(UUID.randomUUID());
-        enforcer.onInteract(interaction(other));
-        verify(dealer, never()).sellDemand(any(), anyString(), anyInt(), any());
-        verify(npc, never()).remove();
+        assertFalse(enforcer.acceptDrop(other, delivery("joint")));
+        verify(dealer, never()).sellDropped(any(), any(), anyInt(), any());
+        verify(character, never()).destroy();
     }
 
-    @Test void firstEarlyClickExplainsTheDealWithoutSelling() {
+    @Test void rightClickOnlyExplainsDropDeliveryAndNeverSellsInventory() {
         assertTrue(enforcer.spawn(player, "joint", 16, true));
-        enforcer.onInteract(interaction(player));
+        interact(player);
+        interact(player);
         verify(player).sendMessage(contains("16 joint within 10s"));
-        verify(dealer, never()).sellDemand(any(), anyString(), anyInt(), any());
+        verify(player).sendMessage(contains("Throw 16 more joint"));
+        verify(dealer, never()).sellDropped(any(), any(), anyInt(), any());
+        verify(player, never()).getInventory();
     }
 
-    @Test void insufficientOrFailedSaleDoesNotCompleteDemand() {
+    @Test void wrongDrugOrFailedSaleDoesNotCompleteDemand() {
         spawnAndApproach();
-        enforcer.onInteract(interaction(player));
-        verify(dealer).sellDemand(eq(player), eq("joint"), eq(16), any());
-        verify(npc, never()).remove();
-        verify(player, never()).sendMessage(contains("You're clear"));
+        Item item = delivery("meth");
+        try (MockedStatic<CartelDealer> prices = mockStatic(CartelDealer.class);
+             MockedStatic<DrugItemMetadata> metadata = mockStatic(DrugItemMetadata.class)) {
+            prices.when(() -> CartelDealer.price(any(), any())).thenReturn(15.0);
+            metadata.when(() -> DrugItemMetadata.getDrugId(any(ItemMeta.class))).thenReturn("meth");
+            assertFalse(enforcer.acceptDrop(player, item));
+            verify(dealer, never()).sellDropped(any(), any(), anyInt(), any());
+            metadata.when(() -> DrugItemMetadata.getDrugId(any(ItemMeta.class))).thenReturn("joint");
+            assertTrue(enforcer.acceptDrop(player, item));
+            verify(dealer).sellDropped(eq(player), eq(item), eq(16), any());
+            verify(character, never()).destroy();
+        }
     }
 
     @Test void quitRemovesNpcAndAppliesCooldown() {
@@ -185,7 +204,7 @@ class CartelEnforcerTest {
         PlayerQuitEvent event = mock(PlayerQuitEvent.class);
         when(event.getPlayer()).thenReturn(player);
         enforcer.onQuit(event);
-        verify(npc).remove();
+        verify(character).destroy();
         assertFalse(enforcer.spawn(player, "joint", 16, false));
     }
 
@@ -201,18 +220,24 @@ class CartelEnforcerTest {
     }
 
     @Test void unreachableNpcIsRemovedWithoutIssuingADemand() {
-        when(npc.getPathfinder().findPath(player)).thenReturn(null);
+        when(character.approach(player)).thenReturn(false);
         assertFalse(enforcer.spawn(player, "joint", 16, true));
-        verify(npc).remove();
+        verify(character).destroy();
         verify(player, never()).sendMessage(anyString());
     }
 
     @Test void vanishedEconomyCallsOffDemandWithoutSelling() {
         spawnAndApproach();
         when(dealer.payments()).thenReturn(null);
-        enforcer.onInteract(interaction(player));
-        verify(npc).remove();
-        verify(dealer, never()).sellDemand(any(), anyString(), anyInt(), any());
+        Item item = delivery("joint");
+        try (MockedStatic<CartelDealer> prices = mockStatic(CartelDealer.class);
+             MockedStatic<DrugItemMetadata> metadata = mockStatic(DrugItemMetadata.class)) {
+            prices.when(() -> CartelDealer.price(any(), any())).thenReturn(15.0);
+            metadata.when(() -> DrugItemMetadata.getDrugId(any(ItemMeta.class))).thenReturn("joint");
+            assertTrue(enforcer.acceptDrop(player, item));
+        }
+        verify(character).destroy();
+        verify(dealer, never()).sellDropped(any(), any(), anyInt(), any());
         verify(player).sendMessage(contains("called off"));
     }
     @Test void optionalDamageIsLimitedByCurrentHealth() {
@@ -222,14 +247,14 @@ class CartelEnforcerTest {
         time.addAndGet(10000);
         enforcer.tick();
         verify(player).damage(2.0, npc);
-        verify(npc).remove();
+        verify(character).destroy();
     }
 
     @Test void unloadedGroundIsSkippedWithoutGeneratingChunks() {
         when(world.isChunkLoaded(anyInt(), anyInt())).thenReturn(false);
         assertFalse(enforcer.spawn(player, "joint", 16, true));
         verify(world, never()).getBlockAt(anyInt(), anyInt(), anyInt());
-        verify(world, never()).spawn(any(Location.class), eq(Villager.class), any(Consumer.class));
+        verify(npcs, never()).create(any(Location.class), anyString());
     }
 
     @Test void reloadCallsOffActiveDemandsWithoutThreats() {
@@ -237,7 +262,7 @@ class CartelEnforcerTest {
         enforcer.reload();
         time.addAndGet(20000);
         enforcer.tick();
-        verify(npc).remove();
+        verify(character).destroy();
         verify(player).sendMessage(contains("called off"));
         verify(player, never()).sendMessage(contains("Watch your back"));
     }
@@ -247,7 +272,7 @@ class CartelEnforcerTest {
         when(dealer.payments()).thenReturn(null);
         time.addAndGet(10000);
         enforcer.tick();
-        verify(npc).remove();
+        verify(character).destroy();
         verify(player).sendMessage(contains("called off"));
         verify(player, never()).sendMessage(contains("Watch your back"));
     }
@@ -293,6 +318,60 @@ class CartelEnforcerTest {
         config.set("enforcer.min-amount", -5);
         config.set("enforcer.max-amount", -1);
         assertEquals(1, enforcer.randomDemand(new Random(42)).amount());
+    }
+
+    @Test void citizensPlayerNpcsCannotBeTargetedAsRealPlayers() {
+        when(player.hasMetadata("NPC")).thenReturn(true);
+        assertFalse(enforcer.spawn(player, "joint", 16, true));
+        verify(npcs, never()).create(any(Location.class), anyString());
+    }
+
+    private void runExplicitCommand() {
+        bukkit.when(() -> Bukkit.getPlayerExact("Tester")).thenReturn(player);
+        enforcer.onCommand(player, new String[]{"enforcer", "Tester", "joint", "16"});
+    }
+
+    @Test void commandReportsMissingEconomyInsteadOfGenericFailure() {
+        when(dealer.payments()).thenReturn(null);
+        runExplicitCommand();
+        verify(player).sendMessage(contains("Vault has no enabled economy provider"));
+        verify(npcs, never()).create(any(), anyString());
+    }
+
+    @Test void commandReportsBypassPermissionAndGameMode() {
+        when(player.hasPermission("drugs.cartel.enforcer.bypass")).thenReturn(true);
+        runExplicitCommand();
+        verify(player).sendMessage(contains("has drugs.cartel.enforcer.bypass"));
+        when(player.hasPermission("drugs.cartel.enforcer.bypass")).thenReturn(false);
+        when(player.getGameMode()).thenReturn(GameMode.CREATIVE);
+        runExplicitCommand();
+        verify(player).sendMessage(contains("must be in Survival or Adventure mode"));
+    }
+
+    @Test void commandReportsUnavailableNpcProviderBeforeSearchingForGround() {
+        when(npcs.unavailableReason()).thenReturn("Citizens is not enabled.");
+        runExplicitCommand();
+        verify(player).sendMessage(contains("Citizens is not enabled"));
+        verify(world, never()).getBlockAt(anyInt(), anyInt(), anyInt());
+    }
+
+    @Test void commandDistinguishesMissingGroundFromRejectedNpcSpawn() {
+        when(world.isChunkLoaded(anyInt(), anyInt())).thenReturn(false);
+        runExplicitCommand();
+        verify(player).sendMessage(contains("No safe nearby ground"));
+        when(world.isChunkLoaded(anyInt(), anyInt())).thenReturn(true);
+        when(npcs.create(any(), eq("enforcer"))).thenReturn(null);
+        runExplicitCommand();
+        verify(player).sendMessage(contains("Citizens could not spawn the player NPC"));
+    }
+
+    @Test void commandReportsExistingEncounterAndMissingPricedDrugs() {
+        spawnAndApproach();
+        runExplicitCommand();
+        verify(player).sendMessage(contains("already has an active encounter"));
+        registry.when(DrugRegistry::getRegisteredDrugNames).thenReturn(Set.of());
+        enforcer.onCommand(player, new String[]{"enforcer"});
+        verify(player).sendMessage(contains("No registered drugs have a positive, finite base price"));
     }
 
 }

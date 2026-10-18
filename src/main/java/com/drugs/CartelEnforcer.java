@@ -1,6 +1,5 @@
 package com.drugs;
 
-import com.destroystokyo.paper.entity.Pathfinder;
 import org.bukkit.*;
 import org.bukkit.block.Block;
 import org.bukkit.command.CommandSender;
@@ -11,12 +10,10 @@ import org.bukkit.event.Listener;
 import org.bukkit.event.entity.EntityDamageEvent;
 import org.bukkit.event.entity.PlayerDeathEvent;
 import org.bukkit.event.player.PlayerChangedWorldEvent;
-import org.bukkit.event.player.PlayerInteractEntityEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.event.player.PlayerTeleportEvent;
 import org.bukkit.event.world.ChunkLoadEvent;
 import org.bukkit.event.world.ChunkUnloadEvent;
-import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.scheduler.BukkitTask;
 
@@ -51,7 +48,7 @@ public final class CartelEnforcer implements Listener {
         // Recover from an interrupted previous run without keeping abandoned NPCs.
         for (World world : Bukkit.getWorlds()) {
             for (Villager villager : world.getEntitiesByClass(Villager.class)) {
-                if (isEnforcer(villager)) villager.remove();
+                if (villager.getPersistentDataContainer().has(key, PersistentDataType.BYTE)) villager.remove();
             }
         }
         nextCheck = clock.getAsLong() + seconds("check-interval-seconds", 300, 10, 86400) * 1000L;
@@ -81,14 +78,14 @@ public final class CartelEnforcer implements Listener {
     }
 
     private boolean eligible(Player player) {
-        return player.isOnline() && !player.isDead()
+        return player.isOnline() && !player.isDead() && !player.hasMetadata("NPC")
                 && (player.getGameMode() == GameMode.SURVIVAL || player.getGameMode() == GameMode.ADVENTURE)
                 && player.hasPermission("drugs.cartel.sell")
                 && !player.hasPermission("drugs.cartel.enforcer.bypass");
     }
 
     private boolean isEnforcer(Entity entity) {
-        return entity instanceof Villager && entity.getPersistentDataContainer().has(key, PersistentDataType.BYTE);
+        return dealer.npcs() != null && dealer.npcs().find(entity, "enforcer") != null;
     }
 
     boolean onCommand(CommandSender sender, String[] args) {
@@ -110,10 +107,10 @@ public final class CartelEnforcer implements Listener {
             sender.sendMessage(ChatColor.RED + "Amount must be a whole number between 1 and 2304.");
             return true;
         }
-        if (demand == null || !spawn(target, demand.drug(), demand.amount(), true)) {
-            sender.sendMessage(ChatColor.RED + "Could not start encounter. Check the drug price, amount (1–2304), "
-                    + "Vault economy, player's game mode/permissions, existing encounter, and nearby walkable ground.");
-        } else sender.sendMessage(ChatColor.GREEN + "Cartel enforcer sent to " + target.getName() + ".");
+        String error = demand == null ? "No registered drugs have a positive, finite base price in cartel.yml."
+                : startEncounter(target, demand.drug(), demand.amount(), true);
+        if (error != null) sender.sendMessage(ChatColor.RED + "Could not start encounter: " + error);
+        else sender.sendMessage(ChatColor.GREEN + "Cartel enforcer sent to " + target.getName() + ".");
         return true;
     }
 
@@ -131,39 +128,45 @@ public final class CartelEnforcer implements Listener {
     }
 
     boolean spawn(Player player, String drug, int amount, boolean manual) {
+        return startEncounter(player, drug, amount, manual) == null;
+    }
+
+    /** Returns a specific failure message, or null after starting the encounter. */
+    private String startEncounter(Player player, String drug, int amount, boolean manual) {
         long now = clock.getAsLong();
-        if (!eligible(player) || encounters.containsKey(player.getUniqueId()) || drug == null
-                || !DrugRegistry.isDrugRegistered(drug) || amount < 1 || amount > 2304
-                || encounters.size() >= seconds("max-active", 8, 1, 100)
-                || (!manual && cooldowns.getOrDefault(player.getUniqueId(), 0L) > now)) return false;
+        if (!player.isOnline() || player.isDead()) return "The target must be online and alive.";
+        if (player.hasMetadata("NPC")) return "The target is an NPC, not a real player.";
+        if (player.getGameMode() != GameMode.SURVIVAL && player.getGameMode() != GameMode.ADVENTURE)
+            return "The target must be in Survival or Adventure mode.";
+        if (!player.hasPermission("drugs.cartel.sell")) return "The target lacks drugs.cartel.sell permission.";
+        if (player.hasPermission("drugs.cartel.enforcer.bypass"))
+            return "The target has drugs.cartel.enforcer.bypass. Remove that permission to allow encounters.";
+        if (encounters.containsKey(player.getUniqueId()))
+            return "The target already has an active encounter. Finish it or use /cartel reload to call it off.";
+        if (drug == null || !DrugRegistry.isDrugRegistered(drug)) return "Unknown drug ID: " + drug + ". Use /drugs list.";
+        if (amount < 1 || amount > 2304) return "Amount must be between 1 and 2304.";
+        if (encounters.size() >= seconds("max-active", 8, 1, 100)) return "The server's enforcer.max-active limit has been reached.";
+        if (!manual && cooldowns.getOrDefault(player.getUniqueId(), 0L) > now) return "The target is on an encounter cooldown.";
         double price = config().getDouble("prices." + drug, 0);
-        if (!Double.isFinite(price) || price <= 0 || dealer.payments() == null) return false;
+        if (!Double.isFinite(price) || price <= 0)
+            return "prices." + drug + " must be positive and finite in cartel.yml. Run /cartel reload after editing.";
+        if (dealer.payments() == null) return "Vault has no enabled economy provider. Check Vault and EssentialsX startup logs.";
+        CartelNpcs npcs = dealer.npcs();
+        if (npcs == null) return "Cartel NPC support is not initialized. Check the startup log.";
+        String unavailable = npcs.unavailableReason();
+        if (unavailable != null) return unavailable;
         Location location = findSpawn(player);
-        if (location == null) return false;
-        Villager npc = player.getWorld().spawn(location, Villager.class, villager -> {
-            villager.getPersistentDataContainer().set(key, PersistentDataType.BYTE, (byte) 1);
-            villager.setCustomName(ChatColor.DARK_RED + "Cartel Enforcer");
-            villager.setCustomNameVisible(true);
-            villager.setAdult();
-            villager.setAI(true);
-            villager.setInvulnerable(true);
-            villager.setSilent(true);
-            villager.setCollidable(false);
-            villager.setPersistent(false);
-            villager.setRemoveWhenFarAway(false);
-        });
-        if (!npc.isValid()) { npc.remove(); return false; }
-        Pathfinder.PathResult path = npc.getPathfinder().findPath(player);
-        if (path == null || path.getFinalPoint() == null
-                || path.getFinalPoint().distanceSquared(player.getLocation()) > 16
-                || !npc.getPathfinder().moveTo(path, 1.15)) {
-            npc.remove();
-            return false;
+        if (location == null) return "No safe nearby ground found in loaded chunks. Try an open, flat area.";
+        CartelNpcs.Character npc = npcs.create(location, "enforcer");
+        if (npc == null) return "Citizens could not spawn the player NPC. Check the server console for errors or spawn protection.";
+        if (!npc.valid() || !npc.approach(player)) {
+            npc.destroy();
+            return "The player NPC did not become ready for navigation. Check Citizens compatibility and the server console.";
         }
         Encounter encounter = new Encounter(npc, drug, amount, now);
         encounters.put(player.getUniqueId(), encounter);
         say(player, encounter, "arrival", "&8Someone from the cartel is heading your way.", 0);
-        return true;
+        return null;
     }
 
     private Location findSpawn(Player player) {
@@ -210,9 +213,9 @@ public final class CartelEnforcer implements Listener {
         for (UUID id : new ArrayList<>(encounters.keySet())) {
             Encounter encounter = encounters.get(id);
             Player player = Bukkit.getPlayer(id);
-            if (player == null || !eligible(player) || !encounter.npc.isValid()
-                    || player.getWorld() != encounter.npc.getWorld()
-                    || player.getLocation().distanceSquared(encounter.npc.getLocation()) > 4096) {
+            if (player == null || !eligible(player) || !encounter.npc.valid()
+                    || player.getWorld() != encounter.npc.entity().getWorld()
+                    || player.getLocation().distanceSquared(encounter.npc.entity().getLocation()) > 4096) {
                 finish(id);
                 continue;
             }
@@ -221,9 +224,9 @@ public final class CartelEnforcer implements Listener {
                 finish(id);
                 continue;
             }
-            double distance = player.getLocation().distanceSquared(encounter.npc.getLocation());
+            double distance = player.getLocation().distanceSquared(encounter.npc.entity().getLocation());
             if (encounter.deadline == 0) {
-                if (distance <= 12.25 && encounter.npc.hasLineOfSight(player)) beginDemand(player, encounter, now);
+                if (distance <= 12.25 && encounter.npc.entity().hasLineOfSight(player)) beginDemand(player, encounter, now);
                 else if (now - encounter.spawnedAt >= seconds("approach-timeout-seconds", 60, 10, 300) * 1000L) {
                     finish(id);
                     continue;
@@ -237,13 +240,13 @@ public final class CartelEnforcer implements Listener {
                 }
                 if (now >= encounter.nextWarning) {
                     say(player, encounter, "warning",
-                            "&cThe cartel doesn't like waiting. Sell me {amount} {drug}. You have {seconds}s left.",
+                            "&cThe cartel doesn't like waiting. Throw {remaining} more {drug} near me. You have {seconds}s left.",
                             remainingSeconds(encounter, now));
                     encounter.nextWarning = now + seconds("warning-interval-seconds", 15, 5, 300) * 1000L;
                 }
             }
-            if (distance > 6.25) encounter.npc.getPathfinder().moveTo(player, 1.15);
-            else encounter.npc.getPathfinder().stopPathfinding();
+            if (distance > 6.25) encounter.npc.approach(player);
+            else encounter.npc.stop();
         }
         if (now >= nextCheck) {
             nextCheck = now + seconds("check-interval-seconds", 300, 10, 86400) * 1000L;
@@ -268,7 +271,7 @@ public final class CartelEnforcer implements Listener {
         encounter.nextWarning = now + seconds("warning-interval-seconds", 15, 5, 300) * 1000L;
         say(player, encounter, "demand",
                 "&4Cartel: &cSell me {amount} {drug} within {seconds}s, or you'll answer to the cartel. "
-                        + "Right-click me with the full amount in your inventory. You'll be paid.", duration);
+                        + "Throw the drugs near me. Smaller deliveries count, and you'll be paid.", duration);
     }
 
     private int remainingSeconds(Encounter encounter, long now) {
@@ -278,7 +281,10 @@ public final class CartelEnforcer implements Listener {
     private void say(Player player, Encounter encounter, String message, String fallback, int seconds) {
         String text = config().getString("enforcer.messages." + message, fallback)
                 .replace("{amount}", Integer.toString(encounter.amount))
-                .replace("{drug}", encounter.drug).replace("{seconds}", Integer.toString(seconds));
+                .replace("{drug}", encounter.drug).replace("{seconds}", Integer.toString(seconds))
+                .replace("{remaining}", Integer.toString(encounter.amount - encounter.delivered));
+        // Update the previous default text in existing configs as well.
+        text = text.replace("Right-click me with the full amount in your inventory.", "Throw the drugs near me. Smaller deliveries count.");
         player.sendMessage(ChatColor.translateAlternateColorCodes('&', text));
     }
 
@@ -286,34 +292,30 @@ public final class CartelEnforcer implements Listener {
         say(player, encounter, "failure", "&4Cartel: &cYou refused our deal. We'll remember this. Watch your back.", 0);
         // Dialogue only by default. Optional damage is capped and cannot deliberately kill the player.
         double damage = config().getDouble("enforcer.failure-damage", 0);
-        if (Double.isFinite(damage) && damage > 0 && player.getWorld() == encounter.npc.getWorld()
-                && player.getLocation().distanceSquared(encounter.npc.getLocation()) <= 36) {
+        if (Double.isFinite(damage) && damage > 0 && player.getWorld() == encounter.npc.entity().getWorld()
+                && player.getLocation().distanceSquared(encounter.npc.entity().getLocation()) <= 36) {
             double nonlethal = Math.min(Math.min(20, damage), Math.max(0, player.getHealth() - 1));
-            if (nonlethal > 0) player.damage(nonlethal, encounter.npc);
+            if (nonlethal > 0) player.damage(nonlethal, encounter.npc.entity());
         }
     }
 
     private void finish(UUID id) {
         Encounter removed = encounters.remove(id);
         if (removed == null) return;
-        removed.npc.remove();
+        removed.npc.destroy();
         cooldowns.put(id, clock.getAsLong() + seconds("cooldown-seconds", 1800, 10, 86400) * 1000L);
     }
 
-    @EventHandler(ignoreCancelled = true)
-    public void onInteract(PlayerInteractEntityEvent event) {
-        if (!isEnforcer(event.getRightClicked())) return;
-        event.setCancelled(true);
-        if (event.getHand() != EquipmentSlot.HAND) return;
-        Player player = event.getPlayer();
+    void interact(Player player, Entity entity) {
+        if (!isEnforcer(entity)) return;
         Encounter encounter = encounters.get(player.getUniqueId());
-        if (encounter == null || !encounter.npc.getUniqueId().equals(event.getRightClicked().getUniqueId())) {
+        if (encounter == null || !encounter.npc.valid() || !encounter.npc.entity().getUniqueId().equals(entity.getUniqueId())) {
             player.sendMessage(ChatColor.GRAY + "The enforcer is here for someone else.");
             return;
         }
-        if (!eligible(player) || player.getWorld() != encounter.npc.getWorld()
-                || player.getLocation().distanceSquared(encounter.npc.getLocation()) > 36
-                || !encounter.npc.hasLineOfSight(player)) return;
+        if (!eligible(player) || player.getWorld() != encounter.npc.entity().getWorld()
+                || player.getLocation().distanceSquared(encounter.npc.entity().getLocation()) > 36
+                || !encounter.npc.entity().hasLineOfSight(player)) return;
         long now = clock.getAsLong();
         if (encounter.deadline == 0) {
             beginDemand(player, encounter, now);
@@ -324,14 +326,35 @@ public final class CartelEnforcer implements Listener {
             finish(player.getUniqueId());
             return;
         }
+        player.sendMessage(ChatColor.YELLOW + "Throw " + (encounter.amount - encounter.delivered) + " more "
+                + encounter.drug + " near me. " + remainingSeconds(encounter, now) + "s left.");
+    }
+
+    boolean acceptDrop(Player player, Item item) {
+        Encounter encounter = encounters.get(player.getUniqueId());
+        if (encounter == null || encounter.deadline == 0 || !eligible(player) || !item.isValid()
+                || !encounter.npc.valid() || clock.getAsLong() >= encounter.deadline) return false;
+        LivingEntity npc = encounter.npc.entity();
+        if (item.getWorld() != npc.getWorld() || npc.getLocation().distanceSquared(item.getLocation()) > 4
+                || !npc.hasLineOfSight(item)) return false;
+        if (CartelDealer.price(item.getItemStack(), config()) == 0
+                || !encounter.drug.equals(DrugItemMetadata.getDrugId(item.getItemStack().getItemMeta()))) return false;
         CartelDealer.Payments payments = dealer.payments();
         if (payments == null) {
             player.sendMessage(ChatColor.GRAY + "The cartel can't pay right now. The demand has been called off.");
             finish(player.getUniqueId());
-        } else if (dealer.sellDemand(player, encounter.drug, encounter.amount, payments)) {
+            return true;
+        }
+        int sold = dealer.sellDropped(player, item, encounter.amount - encounter.delivered, payments);
+        encounter.delivered += sold;
+        if (encounter.delivered >= encounter.amount) {
             say(player, encounter, "success", "&2Cartel: &aGood. We can do business. You're clear.", 0);
             finish(player.getUniqueId());
+        } else if (sold > 0) {
+            player.sendMessage(ChatColor.GREEN + "Delivered " + encounter.delivered + "/" + encounter.amount + " "
+                    + encounter.drug + ". Throw " + (encounter.amount - encounter.delivered) + " more near me.");
         }
+        return true;
     }
 
     @EventHandler public void onDamage(EntityDamageEvent event) {
@@ -346,8 +369,9 @@ public final class CartelEnforcer implements Listener {
     }
     @EventHandler public void onChunkUnload(ChunkUnloadEvent event) {
         for (UUID id : new ArrayList<>(encounters.keySet())) {
-            Villager npc = encounters.get(id).npc;
-            Location location = npc.getLocation();
+            CartelNpcs.Character npc = encounters.get(id).npc;
+            if (!npc.valid()) { finish(id); continue; }
+            Location location = npc.entity().getLocation();
             if (location.getWorld() == event.getWorld() && (location.getBlockX() >> 4) == event.getChunk().getX()
                     && (location.getBlockZ() >> 4) == event.getChunk().getZ()) finish(id);
         }
@@ -355,18 +379,21 @@ public final class CartelEnforcer implements Listener {
     @EventHandler public void onChunkLoad(ChunkLoadEvent event) {
         for (Entity entity : event.getChunk().getEntities()) {
             if (isEnforcer(entity) && encounters.values().stream()
-                    .noneMatch(encounter -> encounter.npc.getUniqueId().equals(entity.getUniqueId()))) entity.remove();
+                    .noneMatch(encounter -> encounter.npc.valid() && encounter.npc.entity().getUniqueId().equals(entity.getUniqueId()))) {
+                dealer.npcs().find(entity, "enforcer").destroy();
+            }
         }
     }
 
     private static final class Encounter {
-        final Villager npc;
+        final CartelNpcs.Character npc;
         final String drug;
         final int amount;
         final long spawnedAt;
+        int delivered;
         long deadline;
         long nextWarning;
-        Encounter(Villager npc, String drug, int amount, long spawnedAt) {
+        Encounter(CartelNpcs.Character npc, String drug, int amount, long spawnedAt) {
             this.npc = npc;
             this.drug = drug;
             this.amount = amount;
