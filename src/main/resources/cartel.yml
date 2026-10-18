@@ -23,6 +23,8 @@ strain-prices: {}
 # Player NPCs require Citizens. Blank uses the bundled camouflage-style cartel skin.
 # Set a Minecraft username here to use that account's skin instead, then /cartel reload.
 npc:
+  # Buyer name; applied to existing buyers with /cartel reload.
+  name: "Pablo"
   skin-name: ""
 
 # Temporary cartel encounters. Existing cartel.yml files use these defaults if absent.

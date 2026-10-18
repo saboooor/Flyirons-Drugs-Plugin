@@ -89,7 +89,7 @@ class CitizensCartelNpcsTest {
         assertNotNull(buyer);
         assertSame(entity, buyer.entity());
         assertTrue(buyer.valid());
-        verify(persistent).createNPC(EntityType.PLAYER, "Cartel Buyer");
+        verify(persistent).createNPC(EntityType.PLAYER, "Pablo");
         verify(metadata).setPersistent(CitizensCartelNpcs.ROLE, "buyer");
         verify(npc).setProtected(true);
         verify(persistent).saveToStore();
@@ -100,6 +100,17 @@ class CitizensCartelNpcsTest {
         String decoded = new String(Base64.getDecoder().decode(texture.getValue()), StandardCharsets.UTF_8);
         assertTrue(decoded.contains("textures.minecraft.net/texture/"));
         verify(skin, never()).setSkinName(anyString());
+    }
+
+    @Test void configuredBuyerNameAppliesOnCreationAndReload() {
+        config.set("npc.name", "Diego");
+        assertNotNull(service.create(location, "buyer"));
+        verify(persistent).createNPC(EntityType.PLAYER, "Diego");
+        when(persistent.iterator()).thenAnswer(call -> List.of(npc).iterator());
+        when(metadata.get(CitizensCartelNpcs.ROLE, "")).thenReturn("buyer");
+        config.set("npc.name", "Miguel");
+        service.reload();
+        verify(npc).setName("Miguel");
     }
 
     @Test void enforcersUseMemoryOnlyRegistryAndUsernameOverride() {

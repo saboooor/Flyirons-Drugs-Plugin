@@ -51,7 +51,7 @@ final class CitizensCartelNpcs implements CartelNpcs, Listener {
         NPCRegistry registry = role.equals("buyer") ? CitizensAPI.getNPCRegistry() : temporary;
         NPC npc = null;
         try {
-            npc = registry.createNPC(EntityType.PLAYER, role.equals("buyer") ? "Cartel Buyer" : "Cartel Enforcer");
+            npc = registry.createNPC(EntityType.PLAYER, role.equals("buyer") ? buyerName() : "Cartel Enforcer");
             npc.data().setPersistent(ROLE, role);
             npc.setProtected(true);
             npc.data().setPersistent("collidable", false);
@@ -81,6 +81,11 @@ final class CitizensCartelNpcs implements CartelNpcs, Listener {
         return npc != null && role.equals(npc.data().get(ROLE, ""));
     }
 
+    private String buyerName() {
+        String name = dealer.settings().getString("npc.name", "Pablo").trim();
+        return name.isEmpty() ? "Pablo" : name;
+    }
+
     private void applySkin(NPC npc) {
         SkinTrait skin = npc.getOrAddTrait(SkinTrait.class);
         skin.clearTexture();
@@ -96,6 +101,7 @@ final class CitizensCartelNpcs implements CartelNpcs, Listener {
         if (closed) return;
         for (NPC npc : CitizensAPI.getNPCRegistry()) {
             if (owns(npc, "buyer")) {
+                npc.setName(buyerName());
                 applySkin(npc);
                 if (npc.getEntity() instanceof LivingEntity living) living.setCanPickupItems(false);
             }

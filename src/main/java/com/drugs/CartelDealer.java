@@ -110,7 +110,9 @@ public final class CartelDealer implements Listener, CommandExecutor, TabComplet
             player.sendMessage(ChatColor.RED + "You cannot sell to cartel buyers.");
             return;
         }
-        player.sendMessage(ChatColor.GREEN + "Throw drugs within two blocks of me to sell them.");
+        String name = config.getString("npc.name", "Pablo").trim();
+        if (name.isEmpty()) name = "Pablo";
+        player.sendMessage(ChatColor.GREEN + name + ": Throw the goods to me, within two blocks, and I'll pay you.");
     }
 
     @EventHandler
