@@ -24,6 +24,7 @@ public class DrugsV2 extends JavaPlugin {
     private WeedFarmManager weedFarmManager;
     private LsdEffectManager lsdEffectManager;
     private SalviaEffectManager salviaEffectManager;
+    private CartelEnforcer cartelEnforcer;
 
     public static DrugsV2 getInstance() {
         return instance;
@@ -104,6 +105,14 @@ public class DrugsV2 extends JavaPlugin {
         BongRegistry.respawnMissing(bongListener);
 
         // Register commands
+        CartelDealer cartelDealer = new CartelDealer(this);
+        getServer().getPluginManager().registerEvents(cartelDealer, this);
+        getCommand("cartel").setExecutor(cartelDealer);
+        getCommand("cartel").setTabCompleter(cartelDealer);
+        cartelEnforcer = new CartelEnforcer(this, cartelDealer);
+        cartelDealer.setEnforcer(cartelEnforcer);
+        getServer().getPluginManager().registerEvents(cartelEnforcer, this);
+        cartelEnforcer.start();
         getCommand("drugs").setExecutor(new DrugsCommand());
         getCommand("drugs").setTabCompleter(new DrugsTabCompleter());
         getCommand("drugstatus").setExecutor(new DrugStatusCommand());
@@ -123,6 +132,7 @@ public class DrugsV2 extends JavaPlugin {
 
     @Override
     public void onDisable() {
+        if (cartelEnforcer != null) cartelEnforcer.shutdown();
         CannabisPlantRegistry.save();
         if (drugGrowing != null) drugGrowing.save();
         BongRegistry.save();
