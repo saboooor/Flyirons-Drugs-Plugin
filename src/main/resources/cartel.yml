@@ -1,0 +1,51 @@
+# Unit prices in your Vault economy's currency. Missing, zero, or negative prices disable sales.
+# Example values: adjust these to suit your server economy before creating dealers.
+prices:
+  heroin: 50.0
+  fent: 20.0
+  shrooms: 15.0
+  meth: 35.0
+  blunt: 15.0
+  cocaine: 40.0
+  joint: 6.0
+  edible: 10.0
+  glue: 2.0
+  molly: 20.0
+  lsd: 30.0
+  salvia: 12.0
+# Cartridges are excluded by default. Partially used cartridges are always rejected.
+# Optional absolute price overrides per drug and strain, for example:
+# strain-prices:
+#   joint:
+#     reggie: 10.0
+strain-prices: {}
+
+# Player NPCs require Citizens. Blank uses the bundled camouflage-style cartel skin.
+# Set a Minecraft username here to use that account's skin instead, then /cartel reload.
+npc:
+  skin-name: ""
+
+# Temporary cartel encounters. Existing cartel.yml files use these defaults if absent.
+enforcer:
+  enabled: true                 # Automatic spawns; admins can still trigger encounters manually.
+  # Each encounter chooses a random registered drug with a positive, finite base price.
+  min-amount: 8                 # Inclusive random quantity limits, clamped to 1–2304.
+  max-amount: 32                # Values below min-amount use min-amount.
+  check-interval-seconds: 300
+  spawn-chance: 0.25            # Chance per eligible player at each check; 0–1.
+  cooldown-seconds: 1800        # Per-player cooldown after an encounter ends.
+  max-active: 8                # Server-wide cap.
+  spawn-min-distance: 8
+  spawn-max-distance: 12
+  approach-timeout-seconds: 60  # No penalty if the enforcer cannot reach you.
+  deadline-seconds: 90          # Starts once the enforcer approaches you.
+  warning-interval-seconds: 15
+  failure-damage: 0             # Dialogue only by default. Optional nearby damage in HP (2 = 1 heart).
+  # Optional damage is capped at 20 HP and at health minus 1; respects damage event cancellation.
+  # Placeholders: {drug}, {amount}, {remaining}, {seconds}; supports & color codes.
+  messages:
+    arrival: "&8Someone from the cartel is heading your way."
+    demand: "&4Cartel: &cSell me {amount} {drug} within {seconds}s, or you'll answer to the cartel. Throw the drugs near me. Smaller deliveries count. You'll be paid."
+    warning: "&cThe cartel doesn't like waiting. Throw {remaining} more {drug} near me. You have {seconds}s left."
+    failure: "&4Cartel: &cYou refused our deal. We'll remember this. Watch your back."
+    success: "&2Cartel: &aGood. We can do business. You're clear."

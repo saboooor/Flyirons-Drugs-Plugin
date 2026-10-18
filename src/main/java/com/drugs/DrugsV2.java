@@ -32,6 +32,9 @@ public class DrugsV2 extends JavaPlugin {
     private boolean bongsLoaded;
     private boolean farmsLoaded;
     private boolean addictionLoaded;
+    private CartelEnforcer cartelEnforcer;
+    private CartelNpcs cartelNpcs;
+    private CartelDroppedSales cartelDroppedSales;
 
     public static DrugsV2 getInstance() {
         return instance;
@@ -42,7 +45,7 @@ public class DrugsV2 extends JavaPlugin {
         instance = this;
         // PlugMan calls this on the server thread. Defer heavy initialization so ticks
         // continue between phases, and keep commands safe until all services are ready.
-        for (String name : List.of("drugs", "drugstatus", "tolerance", "strains")) {
+        for (String name : List.of("drugs", "drugstatus", "tolerance", "strains", "cartel")) {
             getCommand(name).setExecutor((sender, command, label, args) -> {
                 sender.sendMessage("§eFlyiron's Drugs is initializing. Please try again shortly.");
                 return true;
@@ -130,6 +133,20 @@ public class DrugsV2 extends JavaPlugin {
                 MechanicsConfig.getWorkerTickInterval(), MechanicsConfig.getWorkerTickInterval());
         getServer().getScheduler().runTask(this, () -> BongRegistry.respawnMissing(bongListener));
 
+        // Register commands
+        CartelDealer cartelDealer = new CartelDealer(this);
+        getServer().getPluginManager().registerEvents(cartelDealer, this);
+        getCommand("cartel").setExecutor(cartelDealer);
+        getCommand("cartel").setTabCompleter(cartelDealer);
+        cartelNpcs = CartelNpcs.create(this, cartelDealer);
+        cartelDealer.setNpcs(cartelNpcs);
+        cartelEnforcer = new CartelEnforcer(this, cartelDealer);
+        cartelDealer.setEnforcer(cartelEnforcer);
+        getServer().getPluginManager().registerEvents(cartelEnforcer, this);
+        cartelEnforcer.start();
+        cartelDroppedSales = new CartelDroppedSales(this, cartelDealer, cartelEnforcer);
+        getServer().getPluginManager().registerEvents(cartelDroppedSales, this);
+        cartelDroppedSales.start();
         getCommand("drugs").setExecutor(new DrugsCommand());
         getCommand("drugs").setTabCompleter(new DrugsTabCompleter());
         getCommand("drugstatus").setExecutor(new DrugStatusCommand());
@@ -146,6 +163,9 @@ public class DrugsV2 extends JavaPlugin {
     @Override
     public void onDisable() {
         if (startup != null) startup.cancel();
+        if (cartelDroppedSales != null) cartelDroppedSales.shutdown();
+        if (cartelEnforcer != null) cartelEnforcer.shutdown();
+        if (cartelNpcs != null) cartelNpcs.shutdown();
         NativeAdvancements.shutdown();
         if (placeholderExpansion != null) placeholderExpansion.unregister();
         if (lsdEffectManager != null) lsdEffectManager.cleanupAll();
