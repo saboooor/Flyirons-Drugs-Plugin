@@ -51,8 +51,8 @@ class CitizensCartelNpcsTest {
         bukkit = mockStatic(Bukkit.class);
         bukkit.when(Bukkit::getWorlds).thenReturn(List.of());
         plugin = mock(DrugsV2.class);
-        when(plugin.getName()).thenReturn("FlyironsDrugs");
-        when(plugin.namespace()).thenReturn("flyironsdrugs");
+        when(plugin.getName()).thenReturn("LumiDrugs");
+        when(plugin.namespace()).thenReturn("LumiDrugs");
         when(plugin.getLogger()).thenReturn(Logger.getAnonymousLogger());
         Server server = mock(Server.class);
         when(plugin.getServer()).thenReturn(server);
@@ -66,7 +66,7 @@ class CitizensCartelNpcsTest {
         persistent = mock(NPCRegistry.class);
         temporary = mock(NPCRegistry.class);
         citizens.when(CitizensAPI::getNPCRegistry).thenReturn(persistent);
-        citizens.when(() -> CitizensAPI.createInMemoryNPCRegistry("flyirons-cartel-enforcers")).thenReturn(temporary);
+        citizens.when(() -> CitizensAPI.createInMemoryNPCRegistry("lumidrugs-cartel-enforcers")).thenReturn(temporary);
         when(persistent.iterator()).thenAnswer(call -> Collections.emptyIterator());
         npc = mock(NPC.class);
         metadata = mock(MetadataStore.class);
@@ -243,7 +243,7 @@ class CitizensCartelNpcsTest {
         verify(temporary, times(1)).deregisterAll();
         verify(persistent, never()).deregisterAll();
         verify(persistent).saveToStore();
-        citizens.verify(() -> CitizensAPI.removeNamedNPCRegistry("flyirons-cartel-enforcers"));
+        citizens.verify(() -> CitizensAPI.removeNamedNPCRegistry("lumidrugs-cartel-enforcers"));
     }
 
     @Test void missingCitizensLeavesTheRestOfThePluginUsable() {

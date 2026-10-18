@@ -47,12 +47,27 @@ enforcer:
   approach-timeout-seconds: 60  # No penalty if the enforcer cannot reach you.
   deadline-seconds: 90          # Starts once the enforcer approaches you.
   warning-interval-seconds: 15
+  # Consecutive expired demands per player; completing a demand resets the streak.
+  # Streaks survive reconnects/restarts. Called-off encounters do not count as refusals.
+  aggravation:
+    angry-after-refusals: 15
+    furious-after-refusals: 20
+    angry-deadline-seconds: 45   # Caps the normal deadline once angry.
+    furious-deadline-seconds: 30
   failure-damage: 0             # Dialogue only by default. Optional nearby damage in HP (2 = 1 heart).
   # Optional damage is capped at 20 HP and at health minus 1; respects damage event cancellation.
-  # Placeholders: {drug}, {amount}, {remaining}, {seconds}; supports & color codes.
+  # Placeholders: {drug}, {amount}, {remaining}, {seconds}, {refusals}; supports & color codes.
   messages:
     arrival: "&8Someone from the cartel is heading your way."
     demand: "&4Cartel: &cSell me {amount} {drug} within {seconds}s, or you'll answer to the cartel. Throw the drugs near me. Smaller deliveries count. You'll be paid."
     warning: "&cThe cartel doesn't like waiting. Throw {remaining} more {drug} near me. You have {seconds}s left."
     failure: "&4Cartel: &cYou refused our deal. We'll remember this. Watch your back."
     success: "&2Cartel: &aGood. We can do business. You're clear."
+    angry-arrival: "&cThe cartel enforcer is back, and he looks angry."
+    angry-demand: "&4Cartel: &cYou've refused us {refusals} times in a row. My patience is running out. Sell me {amount} {drug} in {seconds}s. Throw it near me. You'll be paid."
+    angry-warning: "&4Cartel: &cDon't test me again. {remaining} more {drug}, and only {seconds}s left."
+    angry-failure: "&4Cartel: &cThat's {refusals} refusals in a row. You're pushing your luck. Next time, come prepared."
+    furious-arrival: "&4The cartel enforcer is back. His patience with you is gone."
+    furious-demand: "&4Cartel: &c&lEnough! &r&cYou've refused us {refusals} times in a row. Sell me {amount} {drug} in {seconds}s. Throw it near me. You'll be paid. No more excuses."
+    furious-warning: "&4Cartel: &c&lI'm done waiting! &r&c{remaining} more {drug}. {seconds}s left. Move!"
+    furious-failure: "&4Cartel: &c&lAgain?! &r&c{refusals} refusals in a row. You've made an enemy of the cartel. This isn't over."

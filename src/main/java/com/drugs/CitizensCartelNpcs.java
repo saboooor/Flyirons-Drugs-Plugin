@@ -23,8 +23,8 @@ import java.util.Objects;
 
 /** Citizens owns persistent buyers; a separate memory-only registry owns temporary enforcers. */
 final class CitizensCartelNpcs implements CartelNpcs, Listener {
-    static final String ROLE = "flyirons-cartel-role";
-    private static final String TEMPORARY_REGISTRY = "flyirons-cartel-enforcers";
+    static final String ROLE = "lumidrugs-cartel-role";
+    private static final String TEMPORARY_REGISTRY = "lumidrugs-cartel-enforcers";
     private final DrugsV2 plugin;
     private final CartelDealer dealer;
     private final NPCRegistry temporary;

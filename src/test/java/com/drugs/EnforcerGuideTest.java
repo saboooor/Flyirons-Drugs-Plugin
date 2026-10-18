@@ -43,8 +43,8 @@ class EnforcerGuideTest {
             when(item.getItemMeta()).thenReturn(mock(ItemMeta.class));
         });
         plugin = mock(DrugsV2.class);
-        when(plugin.getName()).thenReturn("FlyironsDrugs");
-        when(plugin.namespace()).thenReturn("flyironsdrugs");
+        when(plugin.getName()).thenReturn("LumiDrugs");
+        when(plugin.namespace()).thenReturn("LumiDrugs");
         var server = mock(Server.class);
         var scheduler = mock(BukkitScheduler.class);
         when(plugin.getServer()).thenReturn(server);

@@ -92,7 +92,7 @@ public class AchievementSettingsLoader {
             }
         }
         
-        Bukkit.getLogger().info("[FlyironsDrugs] Loaded achievement settings. System enabled: " + enabled);
+        Bukkit.getLogger().info("[LumiDrugs] Loaded achievement settings. System enabled: " + enabled);
     }
     
     /**

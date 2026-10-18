@@ -15,6 +15,7 @@ public class WeedFarm {
     private final String farmId;
     private final Location controllerLocation;
     private UUID worldId;
+    private boolean regionDefined;
     private int minX;
     private int minY;
     private int minZ;
@@ -49,6 +50,7 @@ public class WeedFarm {
     }
 
     public void setRegion(World world, Location first, Location second) {
+        this.regionDefined = true;
         this.worldId = world.getUID();
         this.minX = Math.min(first.getBlockX(), second.getBlockX());
         this.minY = Math.min(first.getBlockY(), second.getBlockY());
@@ -59,7 +61,7 @@ public class WeedFarm {
     }
 
     public boolean hasRegion() {
-        return maxX >= minX && maxY >= minY && maxZ >= minZ;
+        return regionDefined && maxX >= minX && maxY >= minY && maxZ >= minZ;
     }
 
     public boolean contains(Block block) {

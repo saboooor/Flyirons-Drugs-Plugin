@@ -79,6 +79,14 @@ class CartelEnforcerTest {
                 (int) call.getArgument(1) == 63 ? floor : air);
         player = mock(Player.class);
         when(player.getUniqueId()).thenReturn(UUID.randomUUID());
+        var data = mock(org.bukkit.persistence.PersistentDataContainer.class);
+        var stored = new java.util.HashMap<NamespacedKey, Integer>();
+        when(player.getPersistentDataContainer()).thenReturn(data);
+        when(data.getOrDefault(any(NamespacedKey.class), eq(org.bukkit.persistence.PersistentDataType.INTEGER), anyInt()))
+                .thenAnswer(call -> stored.getOrDefault(call.getArgument(0), call.getArgument(2)));
+        doAnswer(call -> { stored.put(call.getArgument(0), call.getArgument(2)); return null; })
+                .when(data).set(any(NamespacedKey.class), eq(org.bukkit.persistence.PersistentDataType.INTEGER), anyInt());
+        doAnswer(call -> { stored.remove(call.getArgument(0)); return null; }).when(data).remove(any(NamespacedKey.class));
         when(player.isOnline()).thenReturn(true);
         when(player.getGameMode()).thenReturn(GameMode.SURVIVAL);
         when(player.hasPermission("drugs.cartel.sell")).thenReturn(true);
@@ -111,6 +119,59 @@ class CartelEnforcerTest {
     }
 
     private void interact(Player who) { enforcer.interact(who, npc); }
+
+    private void refuse() {
+        spawnAndApproach();
+        time.addAndGet(10000);
+        enforcer.tick();
+    }
+
+    @Test void escalatesAtFifteenAndTwentyConsecutiveRefusals() {
+        for (int i = 0; i < 14; i++) refuse();
+        assertEquals(14, enforcer.refusalStreak(player));
+        verify(player, never()).sendMessage(contains("pushing your luck"));
+        refuse();
+        verify(player).sendMessage(contains("15 refusals in a row"));
+        verify(player).sendMessage(contains("pushing your luck"));
+        for (int i = 15; i < 20; i++) refuse();
+        assertEquals(20, enforcer.refusalStreak(player));
+        verify(player).sendMessage(contains("20 refusals in a row"));
+        verify(player).sendMessage(contains("made an enemy"));
+        verify(player, never()).damage(anyDouble(), any(org.bukkit.entity.Entity.class));
+    }
+
+    @Test void angryAndFuriousDemandsHaveShorterDeadlines() {
+        for (int i = 0; i < 15; i++) refuse();
+        config.set("enforcer.deadline-seconds", 90);
+        spawnAndApproach();
+        verify(player).sendMessage(contains("16 joint in 45s"));
+        time.addAndGet(44999);
+        enforcer.tick();
+        assertEquals(15, enforcer.refusalStreak(player));
+        time.incrementAndGet();
+        enforcer.tick();
+        assertEquals(16, enforcer.refusalStreak(player));
+        config.set("enforcer.deadline-seconds", 10);
+        for (int i = 16; i < 20; i++) refuse();
+        config.set("enforcer.deadline-seconds", 90);
+        spawnAndApproach();
+        verify(player).sendMessage(contains("16 joint in 30s"));
+        time.addAndGet(30000);
+        enforcer.tick();
+        assertEquals(21, enforcer.refusalStreak(player));
+    }
+
+    @Test void calledOffEncountersDoNotCountOrClearPreviousRefusals() {
+        refuse();
+        spawnAndApproach();
+        enforcer.reload();
+        assertEquals(1, enforcer.refusalStreak(player));
+        spawnAndApproach();
+        when(dealer.payments()).thenReturn(null);
+        time.addAndGet(10000);
+        enforcer.tick();
+        assertEquals(1, enforcer.refusalStreak(player));
+    }
 
     @Test void approachesWarnsAndThreatensAtDeadlineWithNoDefaultDamage() {
         spawnAndApproach();
@@ -156,6 +217,9 @@ class CartelEnforcerTest {
     }
 
     @Test void droppedDeliveriesAccumulateAndStopAtRequiredQuantity() {
+        refuse();
+        assertEquals(1, enforcer.refusalStreak(player));
+        clearInvocations(character);
         spawnAndApproach();
         Item first = delivery("joint");
         Item second = delivery("joint");
@@ -172,6 +236,7 @@ class CartelEnforcerTest {
             assertFalse(enforcer.acceptDrop(player, second));
             verify(character).destroy();
             verify(player).sendMessage(contains("You're clear"));
+            assertEquals(0, enforcer.refusalStreak(player));
         }
     }
 

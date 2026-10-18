@@ -1,4 +1,4 @@
-# 🧪 Flyiron's Drugs - Create Your Own Drug
+# 🧪 LumiDrugs - Create Your Own Drug
 
 ## Step-by-Step
 

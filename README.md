@@ -1,4 +1,4 @@
-# Flyiron's Drugs Plugin
+# LumiDrugs Plugin
 
 Discord: https://discord.gg/SaxTyAFHV9  
 Public SMP: mc.swanky.wtf
@@ -15,7 +15,7 @@ DubSubz
 
 
 
-Flyiron's Drugs Plugin is a heavily expanded survival/PvP gameplay system built around **powerful consumables**, **tolerance**, **addiction**, **withdrawal**, **overdose risk**, **cures**, **cannabis strains**, **bong/cart durability**, and **player achievements**.
+LumiDrugs Plugin is a heavily expanded survival/PvP gameplay system built around **powerful consumables**, **tolerance**, **addiction**, **withdrawal**, **overdose risk**, **cures**, **cannabis strains**, **bong/cart durability**, and **player achievements**.
 
 This is a fork of the original Norses Drugs plugin and is designed to be playable immediately with the provided defaults.
 
@@ -179,13 +179,15 @@ Withdrawal behavior (effect types, timings, point decay) is per-drug and configu
 
 ## Villager Weed Workers
 
-Automated weed farming is now available through Farm Controllers:
+Automated drug crop farming is available through Farm Controllers:
 
-- Craft/place a **Farm Controller** and right-click it to open management GUI.
+- Craft/place a **Farm Controller (barrel)** and right-click it to open its management dialog.
 - Define farm region using a selection wand (max region size: **16x16**).
-- Start/Stop the farm from the controller GUI.
-- Purchase work contracts with emeralds and assign up to **5 villagers**.
+- Start/Stop the farm from the controller dialog.
+- Purchase work contracts with emeralds and assign up to **5 villagers** by holding a contract in your main hand and right-clicking a villager. Each contract is already linked to its farm; you do not need to look at the controller.
 - Assigned villagers are set to **Farmer** profession and must be reachable to contribute output.
+- Workers harvest mature cannabis, poppy, mushroom, ephedra, coca, sassafras, ergot, salvia, and resin crops. Plant the initial crops yourself; workers reuse harvested seeds within each cycle. All crops, including cannabis, need hydrated farmland and light level 9+ to grow. Unused seeds and harvests drop at the controller. Vanilla wheat is left untouched.
+- New controllers are barrels; existing composter controllers remain usable. Breaking a controller drops a barrel item containing its farm ID, area, worker links, and start/stop setting. Workers that cannot be found as living, valid villagers when the controller is placed again are removed (including workers in unloaded chunks). The farm pauses until placed again; its area moves by the same offset as the controller. Contracts remain valid while packed. Packed farms survive server restarts. Contracts for genuinely missing farms are exchanged for one emerald each when the player joins or an invalid contract is used.
 - Dead/invalid villagers are removed from farm assignment data automatically.
 
 Worker throughput scales by reachable workers per cycle (1 to 5 workers), based on `mechanics.yml` weed-farm settings.
@@ -259,6 +261,7 @@ If PlaceholderAPI is installed, this plugin registers `%drugs_...%` placeholders
 
 - Original base plugin: **Norses Drugs**
 - Fork + continued systems work/balance: **Flyiron**
+- Fork + extra features for player interaction: **LumiDrugs**
 
 ## Growing crafting ingredients
 
@@ -301,7 +304,7 @@ Install **Citizens** (a build compatible with your Minecraft server), **Vault**,
 
 - `/cartel create` — spawn a stationary, protected player NPC buyer at your position.
 - `/cartel remove` — remove the buyer you are looking at within five blocks.
-- `/cartel reload` — reload prices from `plugins/FlyironsDrugs/cartel.yml`.
+- `/cartel reload` — reload prices from `plugins/LumiDrugs/cartel.yml`.
 
 Players **throw drug items within two blocks of the buyer** to sell the dropped stack. Right-clicking the buyer explains how to deliver; there is no selling menu. Buyers persist in Citizens' NPC storage across restarts. Existing villager buyers migrate at their original locations when their chunks load with Citizens enabled. Players must remain near the buyer to sell.
 
@@ -316,6 +319,8 @@ Cartel enforcers can spawn on nearby walkable ground, walk toward a survival/adv
 Use `/cartel enforcer` to test a random demand on yourself, or `/cartel enforcer <player> <drug> <amount>` to choose the player, registered drug ID, and quantity. Both commands require `drugs.cartel.admin`. Manual encounters ignore the player's cooldown and the automatic-spawning toggle, but still require an eligible player, working economy, positive base price, safe spawn location, and no existing encounter for that player.
 
 Configure the `enforcer` section in `cartel.yml`, then run `/cartel reload`. Automatic checks default to every 300 seconds, with a 25% chance per eligible player, a 30-minute per-player cooldown after each encounter, and at most eight active NPCs. `min-amount` and `max-amount` set the inclusive random quantity range (clamped to 1–2304). Drugs are chosen uniformly from registered drugs with positive, finite base prices; missing or disabled prices exclude them. The chosen drug and quantity stay fixed for that encounter. Legacy `enforcer.drug` and `enforcer.amount` entries are ignored. Explicit admin commands still accept a chosen drug and quantity. Set `enabled: false` to disable automatic encounters. Existing config files use the same defaults when the section is missing; copy the `enforcer` section from the bundled [cartel.yml](src/main/resources/cartel.yml) to expose all settings.
+
+Each expired demand adds one consecutive refusal for that player. At **15 refusals**, the enforcer uses angrier dialogue and caps new delivery deadlines at **45 seconds**; at **20**, he becomes furious and caps them at **30 seconds**. Completing a demand resets the streak; partial deliveries do not. Called-off encounters neither add to nor reset it. Streaks persist in player data across reconnects and server restarts. Configure thresholds and deadline caps under `enforcer.aggravation`, and dialogue with the `angry-*` / `furious-*` keys under `enforcer.messages`. `{refusals}` shows the current streak.
 
 Use `{remaining}` in warnings for the quantity still needed. Customize the arrival, demand, warning, failure, and success dialogue under `enforcer.messages`. Failure produces threats only by default. Optional `failure-damage` is measured in HP, applies only within six blocks, and is capped at 20 HP and the player's health minus one before normal damage events/modifiers. Set it to `0` for dialogue only. Grant `drugs.cartel.enforcer.bypass` to exempt a player (not granted to operators automatically).
 

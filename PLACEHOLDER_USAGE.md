@@ -1,10 +1,10 @@
-# Flyiron's Drugs PlaceholderAPI Integration
+# LumiDrugs PlaceholderAPI Integration
 
 This plugin provides optional integration with [PlaceholderAPI](https://www.spigotmc.org/resources/placeholderapi.6245/). When PlaceholderAPI is installed, you can use various placeholders to display information about drug tolerances and effectiveness.
 
 ## Requirements
 - PlaceholderAPI installed on your server
-- Flyiron's Drugs plugin
+- LumiDrugs plugin
 
 ## Available Placeholders
 

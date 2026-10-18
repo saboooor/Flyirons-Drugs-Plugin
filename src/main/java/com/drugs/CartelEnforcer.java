@@ -27,6 +27,7 @@ public final class CartelEnforcer implements Listener {
     private final DrugsV2 plugin;
     private final CartelDealer dealer;
     private final NamespacedKey key;
+    private final NamespacedKey refusalsKey;
     private final LongSupplier clock;
     private final Map<UUID, Encounter> encounters = new HashMap<>();
     private final Map<UUID, Long> cooldowns = new HashMap<>();
@@ -42,6 +43,7 @@ public final class CartelEnforcer implements Listener {
         this.dealer = dealer;
         this.clock = clock;
         key = new NamespacedKey(plugin, "cartel_enforcer");
+        refusalsKey = new NamespacedKey(plugin, "cartel_refusal_streak");
     }
 
     public void start() {
@@ -283,6 +285,8 @@ public final class CartelEnforcer implements Listener {
 
     private void beginDemand(Player player, Encounter encounter, long now) {
         int duration = seconds("deadline-seconds", 90, 10, 3600);
+        int tier = angerTier(player);
+        if (tier > 0) duration = Math.min(duration, seconds("aggravation." + (tier == 2 ? "furious" : "angry") + "-deadline-seconds", tier == 2 ? 30 : 45, 10, 3600));
         encounter.deadline = now + duration * 1000L;
         encounter.nextWarning = now + seconds("warning-interval-seconds", 15, 5, 300) * 1000L;
         say(player, encounter, "demand",
@@ -295,16 +299,56 @@ public final class CartelEnforcer implements Listener {
     }
 
     private void say(Player player, Encounter encounter, String message, String fallback, int seconds) {
+        int tier = angerTier(player);
+        String aggravated = aggravatedMessage(message, tier);
+        if (aggravated != null) {
+            message = (tier == 2 ? "furious-" : "angry-") + message;
+            fallback = aggravated;
+        }
         String text = config().getString("enforcer.messages." + message, fallback)
                 .replace("{amount}", Integer.toString(encounter.amount))
                 .replace("{drug}", encounter.drug).replace("{seconds}", Integer.toString(seconds))
-                .replace("{remaining}", Integer.toString(encounter.amount - encounter.delivered));
+                .replace("{remaining}", Integer.toString(encounter.amount - encounter.delivered))
+                .replace("{refusals}", Integer.toString(refusalStreak(player)));
         // Update the previous default text in existing configs as well.
         text = text.replace("Right-click me with the full amount in your inventory.", "Throw the drugs near me. Smaller deliveries count.");
         player.sendMessage(ChatColor.translateAlternateColorCodes('&', text));
     }
 
+    int refusalStreak(Player player) {
+        return Math.max(0, player.getPersistentDataContainer().getOrDefault(refusalsKey, PersistentDataType.INTEGER, 0));
+    }
+
+    private int angerTier(Player player) {
+        int angry = seconds("aggravation.angry-after-refusals", 15, 1, 1000000);
+        int furious = Math.max(angry, seconds("aggravation.furious-after-refusals", 20, 1, 1000000));
+        int streak = refusalStreak(player);
+        return streak >= furious ? 2 : streak >= angry ? 1 : 0;
+    }
+
+    private String aggravatedMessage(String message, int tier) {
+        if (tier == 0) return null;
+        return switch (message) {
+            case "arrival" -> tier == 2
+                    ? "&4The cartel enforcer is back. His patience with you is gone."
+                    : "&cThe cartel enforcer is back, and he looks angry.";
+            case "demand" -> tier == 2
+                    ? "&4Cartel: &c&lEnough! &r&cYou've refused us {refusals} times in a row. Sell me {amount} {drug} in {seconds}s. Throw it near me. You'll be paid. No more excuses."
+                    : "&4Cartel: &cYou've refused us {refusals} times in a row. My patience is running out. Sell me {amount} {drug} in {seconds}s. Throw it near me. You'll be paid.";
+            case "warning" -> tier == 2
+                    ? "&4Cartel: &c&lI'm done waiting! &r&c{remaining} more {drug}. {seconds}s left. Move!"
+                    : "&4Cartel: &cDon't test me again. {remaining} more {drug}, and only {seconds}s left.";
+            case "failure" -> tier == 2
+                    ? "&4Cartel: &c&lAgain?! &r&c{refusals} refusals in a row. You've made an enemy of the cartel. This isn't over."
+                    : "&4Cartel: &cThat's {refusals} refusals in a row. You're pushing your luck. Next time, come prepared.";
+            default -> null;
+        };
+    }
+
     private void threaten(Player player, Encounter encounter) {
+        int streak = refusalStreak(player);
+        player.getPersistentDataContainer().set(refusalsKey, PersistentDataType.INTEGER,
+                streak == Integer.MAX_VALUE ? streak : streak + 1);
         say(player, encounter, "failure", "&4Cartel: &cYou refused our deal. We'll remember this. Watch your back.", 0);
         // Dialogue only by default. Optional damage is capped and cannot deliberately kill the player.
         double damage = config().getDouble("enforcer.failure-damage", 0);
@@ -364,6 +408,7 @@ public final class CartelEnforcer implements Listener {
         int sold = dealer.sellDropped(player, item, encounter.amount - encounter.delivered, payments);
         encounter.delivered += sold;
         if (encounter.delivered >= encounter.amount) {
+            player.getPersistentDataContainer().remove(refusalsKey);
             say(player, encounter, "success", "&2Cartel: &aGood. We can do business. You're clear.", 0);
             finish(player.getUniqueId());
         } else if (sold > 0) {

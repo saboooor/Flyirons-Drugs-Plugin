@@ -24,6 +24,11 @@ public class DrugsV2 extends JavaPlugin {
     private BongListener bongListener;
     private DrugGrowing drugGrowing;
     private WeedFarmManager weedFarmManager;
+    private WeedFarmControllerListener weedFarmControllerListener;
+
+    public WeedFarmControllerListener getWeedFarmControllerListener() {
+        return weedFarmControllerListener;
+    }
     private LsdEffectManager lsdEffectManager;
     private SalviaEffectManager salviaEffectManager;
     private PluginStartup startup;
@@ -48,7 +53,7 @@ public class DrugsV2 extends JavaPlugin {
         // continue between phases, and keep commands safe until all services are ready.
         for (String name : List.of("drugs", "drugstatus", "tolerance", "strains", "cartel")) {
             getCommand(name).setExecutor((sender, command, label, args) -> {
-                sender.sendMessage("§eFlyiron's Drugs is initializing. Please try again shortly.");
+                sender.sendMessage("§eLumiDrugs is initializing. Please try again shortly.");
                 return true;
             });
             getCommand(name).setTabCompleter((sender, command, label, args) -> List.of());
@@ -101,12 +106,12 @@ public class DrugsV2 extends JavaPlugin {
                     addictionLoaded = true;
                 }),
                 new PluginStartup.Step("gameplay listeners and services", this::startGameplay)
-        ), () -> getLogger().info("Flyiron's Drugs is ready!"), exception -> {
-            getLogger().log(Level.SEVERE, "Cannot initialize Flyiron's Drugs", exception);
+        ), () -> getLogger().info("LumiDrugs is ready!"), exception -> {
+            getLogger().log(Level.SEVERE, "Cannot initialize LumiDrugs", exception);
             getServer().getPluginManager().disablePlugin(this);
         });
         startup.start();
-        getLogger().info("Flyiron's Drugs initialization scheduled across server ticks.");
+        getLogger().info("LumiDrugs initialization scheduled across server ticks.");
     }
 
     private void startGameplay() {
@@ -130,8 +135,9 @@ public class DrugsV2 extends JavaPlugin {
         salviaEffectManager = new SalviaEffectManager(this);
         manager.registerEvents(salviaEffectManager, this);
         manager.registerEvents(new NativeAdvancements(), this);
-        manager.registerEvents(new WeedFarmControllerListener(weedFarmManager), this);
-        getServer().getScheduler().runTaskTimer(this, new WeedFarmWorkerService(weedFarmManager),
+        weedFarmControllerListener = new WeedFarmControllerListener(weedFarmManager);
+        manager.registerEvents(weedFarmControllerListener, this);
+        getServer().getScheduler().runTaskTimer(this, new WeedFarmWorkerService(weedFarmManager, drugGrowing),
                 MechanicsConfig.getWorkerTickInterval(), MechanicsConfig.getWorkerTickInterval());
         getServer().getScheduler().runTask(this, () -> BongRegistry.respawnMissing(bongListener));
 
@@ -180,7 +186,7 @@ public class DrugsV2 extends JavaPlugin {
     @Override
     public String namespace() {
         String name = getName();
-        return name != null ? name.toLowerCase(java.util.Locale.ROOT) : "flyironsdrugs";
+        return name != null ? name.toLowerCase(java.util.Locale.ROOT) : "LumiDrugs";
     }
 
     @Override
@@ -200,7 +206,7 @@ public class DrugsV2 extends JavaPlugin {
         if (bongsLoaded) savePhase("saving bongs", BongRegistry::save);
         if (farmsLoaded) savePhase("saving weed farms", weedFarmManager::save);
         if (addictionLoaded) savePhase("saving addiction data", AddictionManager::shutdown);
-        getLogger().info("Flyiron's Drugs disabled.");
+        getLogger().info("LumiDrugs disabled.");
     }
 
     private void savePhase(String name, Runnable action) {

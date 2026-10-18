@@ -1,6 +1,9 @@
 package com.drugs.weedfarm;
 
 import com.drugs.DrugItemMetadata;
+import com.drugs.DrugsV2;
+import com.drugs.Dialogs;
+import com.drugs.DialogView.Icon;
 import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
 import org.bukkit.Location;
@@ -14,19 +17,20 @@ import org.bukkit.event.block.Action;
 import org.bukkit.event.block.BlockBreakEvent;
 import org.bukkit.event.block.BlockPlaceEvent;
 import org.bukkit.event.entity.EntityDeathEvent;
-import org.bukkit.event.inventory.InventoryClickEvent;
-import org.bukkit.event.player.PlayerInteractAtEntityEvent;
+import org.bukkit.event.player.PlayerQuitEvent;
+import org.bukkit.event.player.PlayerJoinEvent;
+import org.bukkit.event.player.PlayerInteractEntityEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
-import org.bukkit.inventory.Inventory;
+import java.util.List;
+import java.util.UUID;
 import org.bukkit.inventory.ItemStack;
-import org.bukkit.inventory.meta.ItemMeta;
-import org.bukkit.util.RayTraceResult;
+import org.bukkit.inventory.EquipmentSlot;
 
 import java.util.HashMap;
 import java.util.Map;
 
 public class WeedFarmControllerListener implements Listener {
-    private static final String GUI_TITLE_PREFIX = ChatColor.DARK_GREEN + "Farm Controller ";
+    private final Map<UUID, String> openControllers = new HashMap<>();
 
     private final WeedFarmManager manager;
     private final Map<Player, Location> pos1 = new HashMap<>();
@@ -36,7 +40,7 @@ public class WeedFarmControllerListener implements Listener {
         this.manager = manager;
     }
 
-    @EventHandler
+    @EventHandler(ignoreCancelled = true)
     public void onControllerPlace(BlockPlaceEvent event) {
         ItemStack item = event.getItemInHand();
         if (item == null || !item.hasItemMeta()) {
@@ -47,20 +51,36 @@ public class WeedFarmControllerListener implements Listener {
             return;
         }
 
-        WeedFarm farm = manager.createFarm(event.getBlockPlaced().getLocation());
+        WeedFarm farm;
+        try {
+            farm = WeedFarmItems.savedFarm(item, event.getBlockPlaced().getLocation());
+        } catch (IllegalArgumentException exception) {
+            event.setCancelled(true);
+            event.getPlayer().sendMessage(ChatColor.RED + "This controller has invalid saved farm data.");
+            return;
+        }
+        if (farm == null) farm = manager.createFarm(event.getBlockPlaced().getLocation());
+        else if (!manager.restoreFarm(farm)) {
+            event.setCancelled(true);
+            event.getPlayer().sendMessage(ChatColor.RED + "This farm controller is already placed.");
+            return;
+        }
+        manager.save();
         event.getPlayer().sendMessage(ChatColor.GREEN + "Farm controller created (ID " + farm.getFarmId() + ").");
     }
 
-    @EventHandler
+    @EventHandler(ignoreCancelled = true)
     public void onControllerBreak(BlockBreakEvent event) {
         WeedFarm farm = manager.getByController(event.getBlock().getLocation());
         if (farm == null) {
             return;
         }
 
-        manager.removeFarm(farm);
+        ItemStack saved = WeedFarmItems.createControllerItem(farm);
+        manager.packFarm(farm);
+        event.getBlock().getWorld().dropItemNaturally(event.getBlock().getLocation(), saved);
         event.setDropItems(false);
-        event.getPlayer().sendMessage(ChatColor.RED + "Farm controller removed. Workers unassigned.");
+        event.getPlayer().sendMessage(ChatColor.RED + "Farm controller packed. Place it again to restore its area and workers.");
     }
 
     @EventHandler
@@ -72,7 +92,9 @@ public class WeedFarmControllerListener implements Listener {
 
     @EventHandler
     public void onInteractController(PlayerInteractEvent event) {
-        if (event.getAction() != Action.RIGHT_CLICK_BLOCK || event.getClickedBlock() == null || event.getClickedBlock().getType() != Material.BARREL) {
+        if (event.getHand() != EquipmentSlot.HAND
+                || WeedFarmItems.parseFarmId(event.getItem(), WeedFarmItems.ITEM_TYPE_AREA_WAND) != null) return;
+        if (event.getAction() != Action.RIGHT_CLICK_BLOCK || event.getClickedBlock() == null || (event.getClickedBlock().getType() != Material.COMPOSTER && event.getClickedBlock().getType() != Material.BARREL)) {
             return;
         }
 
@@ -83,51 +105,74 @@ public class WeedFarmControllerListener implements Listener {
 
         manager.pruneInvalidVillagers(farm);
         event.setCancelled(true);
-        openControllerGui(event.getPlayer(), farm);
+        openControllerDialog(event.getPlayer(), farm);
     }
 
     @EventHandler
-    public void onGuiClick(InventoryClickEvent event) {
-        if (event.getView().getTitle() == null || !event.getView().getTitle().startsWith(GUI_TITLE_PREFIX)) {
-            return;
-        }
-        event.setCancelled(true);
+    public void onJoin(PlayerJoinEvent event) {
+        refundInvalidContracts(event.getPlayer());
+    }
 
-        if (!(event.getWhoClicked() instanceof Player player)) {
-            return;
+    public void refundInvalidContracts(Player player) {
+        int refunded = 0;
+        var inventory = player.getInventory();
+        for (int slot = 0; slot < inventory.getSize(); slot++) {
+            ItemStack stack = inventory.getItem(slot);
+            String farmId = WeedFarmItems.parseFarmId(stack, WeedFarmItems.ITEM_TYPE_CONTRACT);
+            if (farmId == null || manager.getByFarmId(farmId) != null) continue;
+            refunded += stack.getAmount();
+            inventory.setItem(slot, null);
         }
+        if (refunded == 0) return;
+        while (refunded > 0) {
+            int amount = Math.min(64, refunded);
+            for (ItemStack leftover : inventory.addItem(new ItemStack(Material.EMERALD, amount)).values()) {
+                player.getWorld().dropItemNaturally(player.getLocation(), leftover);
+            }
+            refunded -= amount;
+        }
+        player.sendMessage(ChatColor.GREEN + "Removed contracts for missing farms and refunded 1 emerald per contract.");
+    }
 
-        String farmId = ChatColor.stripColor(event.getView().getTitle().replace("Farm Controller ", "")).trim();
+    @EventHandler
+    public void onQuit(PlayerQuitEvent event) {
+        openControllers.remove(event.getPlayer().getUniqueId());
+    }
+
+    public void handleDialogAction(Player player, String action) {
+        String farmId = openControllers.remove(player.getUniqueId());
+        if (farmId == null || action.equals("close")) return;
         WeedFarm farm = manager.getByFarmId(farmId);
-        if (farm == null || event.getCurrentItem() == null) {
+        if (farm == null) return;
+        Location controller = farm.getControllerLocation();
+        if (manager.getByController(controller) != farm) return;
+        if (!player.getWorld().equals(controller.getWorld())
+                || player.getLocation().distanceSquared(controller) > 64) {
+            player.sendMessage(ChatColor.RED + "Move closer to the farm controller and open it again.");
             return;
         }
-
         manager.pruneInvalidVillagers(farm);
-
-        switch (event.getCurrentItem().getType()) {
-            case STICK -> {
-                player.getInventory().addItem(WeedFarmItems.createAreaWand(farm.getFarmId()));
-                player.sendMessage(ChatColor.AQUA + "Use the stick wand to select two corners (max 16x16). ");
+        switch (action) {
+            case "area" -> {
+                player.getInventory().addItem(WeedFarmItems.createAreaWand(farmId));
+                player.sendMessage(ChatColor.AQUA + "Use the arrow wand to select two corners (max 16x16).");
             }
-            case LEVER -> {
+            case "toggle" -> {
                 farm.setEnabled(!farm.isEnabled());
-                player.sendMessage(farm.isEnabled()
-                        ? ChatColor.GREEN + "Farm started."
-                        : ChatColor.RED + "Farm stopped.");
-                openControllerGui(player, farm);
+                player.sendMessage(farm.isEnabled() ? ChatColor.GREEN + "Farm started." : ChatColor.RED + "Farm stopped.");
+                openControllerDialog(player, farm);
             }
-            case PAPER -> {
+            case "contract" -> {
                 if (!consumeEmerald(player)) {
                     player.sendMessage(ChatColor.RED + "You need 1 emerald for a work contract.");
+                    openControllerDialog(player, farm);
                     return;
                 }
-                player.getInventory().addItem(WeedFarmItems.createContract(farm.getFarmId()));
-                player.sendMessage(ChatColor.LIGHT_PURPLE + "Work contract created.");
+                player.getInventory().addItem(WeedFarmItems.createContract(farmId));
+                player.sendMessage(ChatColor.LIGHT_PURPLE + "Work contract created. Hold it and right-click a villager to assign them.");
             }
-            case BOOK -> player.sendMessage(ChatColor.GREEN + farmInfo(farm));
-            default -> {
-            }
+            case "info" -> openControllerDialog(player, farm);
+            default -> { }
         }
     }
 
@@ -170,8 +215,9 @@ public class WeedFarmControllerListener implements Listener {
         }
     }
 
-    @EventHandler
-    public void onVillagerContract(PlayerInteractAtEntityEvent event) {
+    @EventHandler(ignoreCancelled = true)
+    public void onVillagerContract(PlayerInteractEntityEvent event) {
+        if (event.getHand() != EquipmentSlot.HAND) return;
         Entity clicked = event.getRightClicked();
         if (!(clicked instanceof Villager villager)) {
             return;
@@ -182,24 +228,24 @@ public class WeedFarmControllerListener implements Listener {
         if (farmId == null) {
             return;
         }
+        event.setCancelled(true);
 
         WeedFarm farm = manager.getByFarmId(farmId);
         if (farm == null) {
+            refundInvalidContracts(event.getPlayer());
             return;
         }
 
-        RayTraceResult trace = event.getPlayer().rayTraceBlocks(6.0);
-        if (trace == null || trace.getHitBlock() == null || manager.getByController(trace.getHitBlock().getLocation()) != farm) {
-            event.getPlayer().sendMessage(ChatColor.RED + "Look at the farm controller while binding workers.");
+        if (farm.getAssignedVillagers().contains(villager.getUniqueId())) {
+            event.getPlayer().sendMessage(ChatColor.YELLOW + "This villager already works at this farm.");
             return;
         }
-
+        manager.pruneInvalidVillagers(farm);
         if (!manager.assignVillager(farm, villager.getUniqueId())) {
             event.getPlayer().sendMessage(ChatColor.RED + "This farm already has the max of 5 villagers.");
             return;
         }
 
-        villager.setProfession(Villager.Profession.FARMER);
         decrementHeld(event.getPlayer());
         event.getPlayer().sendMessage(ChatColor.LIGHT_PURPLE + "Villager assigned to farm " + farm.getFarmId() + ".");
         event.setCancelled(true);
@@ -215,23 +261,16 @@ public class WeedFarmControllerListener implements Listener {
         }
     }
 
-    private void openControllerGui(Player player, WeedFarm farm) {
-        Inventory inventory = Bukkit.createInventory(null, 27, GUI_TITLE_PREFIX + farm.getFarmId());
-        inventory.setItem(10, named(Material.STICK, ChatColor.AQUA + "Define Farm Area"));
-        inventory.setItem(12, named(Material.LEVER, (farm.isEnabled() ? ChatColor.RED + "Stop Farm" : ChatColor.GREEN + "Start Farm")));
-        inventory.setItem(14, named(Material.PAPER, ChatColor.LIGHT_PURPLE + "Get Work Contract"));
-        inventory.setItem(16, named(Material.BOOK, ChatColor.GREEN + "Show Farm Info"));
-        player.openInventory(inventory);
-    }
-
-    private ItemStack named(Material type, String displayName) {
-        ItemStack stack = new ItemStack(type);
-        ItemMeta meta = stack.getItemMeta();
-        if (meta != null) {
-            meta.setDisplayName(displayName);
-            stack.setItemMeta(meta);
-        }
-        return stack;
+    private void openControllerDialog(Player player, WeedFarm farm) {
+        openControllers.put(player.getUniqueId(), farm.getFarmId());
+        DrugsV2.getInstance().showDialog(player, Dialogs.menu(
+                Dialogs.base("Farm Controller " + farm.getFarmId(), farmInfo(farm)),
+                List.of(
+                        Dialogs.button("Define Farm Area", "/drugs farm area", false, Icon.ARROW, "Select two corners with a wand (max 16x16)."),
+                        Dialogs.button(farm.isEnabled() ? "Stop Farm" : "Start Farm", "/drugs farm toggle", false, Icon.REDSTONE),
+                        Dialogs.button("Get Work Contract (1 emerald)", "/drugs farm contract", false, Icon.SHARED, "Assign a villager to this farm. Maximum 5 workers."),
+                        Dialogs.button("Refresh Farm Info", "/drugs farm info", false, Icon.BOOK)),
+                Dialogs.button("Close", "/drugs farm close", false, Icon.CLOSE)));
     }
 
     private String format(Location location) {

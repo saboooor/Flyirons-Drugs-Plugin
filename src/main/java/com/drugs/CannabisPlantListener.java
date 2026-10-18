@@ -27,6 +27,52 @@ public class CannabisPlantListener implements Listener {
         plugin.getServer().getScheduler().runTaskTimer(plugin, this::tickAutoGrowth, 20L, 20L);
     }
 
+    public static boolean hasHydratedFarmland(Block plant) {
+        return plant.getRelative(0, -1, 0).getBlockData() instanceof org.bukkit.block.data.type.Farmland soil
+                && soil.getMoisture() > 0;
+    }
+
+    private static boolean isCannabisItem(ItemStack item) {
+        if (item == null || item.getType() != Material.FERN) return false;
+        String type = item.hasItemMeta() ? DrugItemMetadata.getItemType(item.getItemMeta()) : null;
+        return type == null || "cannabis_plant".equalsIgnoreCase(type);
+    }
+
+    @EventHandler(priority = org.bukkit.event.EventPriority.HIGHEST, ignoreCancelled = true)
+    public void validateSoil(BlockPlaceEvent event) {
+        if (isCannabisItem(event.getItemInHand()) && !hasHydratedFarmland(event.getBlockPlaced())) {
+            event.setCancelled(true);
+            event.getPlayer().sendMessage("§ePlant cannabis on hydrated farmland.");
+        }
+    }
+
+    // Ferns need an explicit planting interaction to work reliably on farmland.
+    @EventHandler(priority = org.bukkit.event.EventPriority.HIGHEST, ignoreCancelled = true)
+    public void plantOnFarmland(org.bukkit.event.player.PlayerInteractEvent event) {
+        if (event.getAction() != org.bukkit.event.block.Action.RIGHT_CLICK_BLOCK
+                || event.getClickedBlock() == null || !isCannabisItem(event.getItem())) return;
+        Block soil = event.getClickedBlock();
+        if (soil.getType() != Material.FARMLAND || event.getBlockFace() != org.bukkit.block.BlockFace.UP) return;
+        event.setCancelled(true);
+        Block plant = soil.getRelative(0, 1, 0);
+        if (!plant.isEmpty()) return;
+        if (!hasHydratedFarmland(plant)) {
+            event.getPlayer().sendMessage("§eWater the farmland before planting cannabis.");
+            return;
+        }
+        var replaced = plant.getState();
+        plant.setType(Material.FERN, false);
+        var place = new BlockPlaceEvent(plant, replaced, soil, event.getItem(), event.getPlayer(), true, event.getHand());
+        org.bukkit.Bukkit.getPluginManager().callEvent(place);
+        if (place.isCancelled() || !place.canBuild()) {
+            CannabisPlantRegistry.removePlant(plant.getLocation());
+            replaced.update(true, false);
+            return;
+        }
+        if (event.getPlayer().getGameMode() != org.bukkit.GameMode.CREATIVE)
+            event.getItem().setAmount(event.getItem().getAmount() - 1);
+    }
+
     @EventHandler(priority = org.bukkit.event.EventPriority.MONITOR, ignoreCancelled = true)
     public void onPlace(BlockPlaceEvent event) {
         applyPlacedCannabis(event.getBlockPlaced(), event.getItemInHand());
@@ -68,6 +114,8 @@ public class CannabisPlantListener implements Listener {
         if (placedBlock == null || item == null || item.getType() != Material.FERN) {
             return false;
         }
+
+        if (!hasHydratedFarmland(placedBlock)) return false;
 
         String strainId = DrugItemMetadata.DEFAULT_STRAIN_ID;
         if (item.hasItemMeta()) {
@@ -129,7 +177,7 @@ public class CannabisPlantListener implements Listener {
             }
 
             Block top = root.getRelative(0, 1, 0);
-            if (!top.getType().isAir() || !root.getRelative(0, -1, 0).getType().isSolid()) {
+            if (!top.getType().isAir() || !hasHydratedFarmland(root) || root.getLightLevel() < 9) {
                 continue;
             }
 
@@ -189,6 +237,7 @@ public class CannabisPlantListener implements Listener {
             DrugItemMetadata.setStrainId(meta, resolved);
             meta.setDisplayName("§2Weed §7(§f" + (profile != null ? profile.getDisplayName() : resolved) + "§7)");
             java.util.List<String> lore = new java.util.ArrayList<>();
+            lore.add("§7Plant on hydrated farmland; needs light to grow.");
             lore.add("§7Rarity: §e" + (profile != null ? profile.getRarity() : "common"));
             lore.add("§7Mutation Chance: §f" + String.format("%.3f%%", (profile != null ? profile.getMutationChance() : 0.0005) * 100.0));
             if (profile != null && DrugItemMetadata.DEFAULT_STRAIN_ID.equalsIgnoreCase(profile.getId())) {

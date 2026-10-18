@@ -34,7 +34,7 @@ public class PerformanceOptimizer {
         // Start batched processing task
         startBatchedProcessingTask();
         
-        Bukkit.getLogger().info("[FlyironsDrugs] Performance optimizer initialized");
+        Bukkit.getLogger().info("[LumiDrugs] Performance optimizer initialized");
     }
     
     /**

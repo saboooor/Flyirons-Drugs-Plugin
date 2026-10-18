@@ -36,7 +36,7 @@ public class DrugRecipeHelper {
     public static void registerDrugRecipe(String id, ConfigurationSection section, Plugin plugin) {
         if (section == null) return;
 
-        Bukkit.getLogger().info("[FlyironsDrugs] Attempting to register recipe for: " + id);
+        Bukkit.getLogger().info("[LumiDrugs] Attempting to register recipe for: " + id);
 
         // Parse the shape
         var shape = section.getStringList("shape");

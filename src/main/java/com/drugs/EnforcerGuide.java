@@ -121,7 +121,7 @@ public final class EnforcerGuide implements Listener {
     public static List<String> growingSteps(String crop) {
         if (crop == null) return List.of("This recipe does not require a grown ingredient.");
         if (crop.equals("cannabis")) return List.of(
-                "Place a fern or cannabis plant on suitable soil.",
+                "Plant a fern or cannabis plant on hydrated farmland. Keep it lit (light level 9+).",
                 "Leave air above it and keep the chunk loaded.",
                 "Wait for it to become a large fern (average " + MechanicsConfig.getCannabisGrowthSeconds() + "s).",
                 "Bone meal cannot speed up cannabis growth.",

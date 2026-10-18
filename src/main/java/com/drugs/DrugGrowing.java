@@ -108,6 +108,30 @@ public final class DrugGrowing implements Listener {
     private static String key(Block block) {
         return block.getWorld().getUID() + ":" + block.getX() + ":" + block.getY() + ":" + block.getZ();
     }
+    /** Harvest only tracked, mature ingredient crops; vanilla wheat is never touched. */
+    public List<ItemStack> harvestMature(Block block) {
+        Plant plant = plants.get(key(block));
+        if (plant == null || block.getType() != Material.WHEAT
+                || !crops.containsKey(plant.crop())
+                || plant.elapsed() < crops.get(plant.crop()).seconds()) return List.of();
+        plants.remove(key(block));
+        block.setType(Material.AIR, false);
+        save();
+        return List.of(seed(plant.crop()), harvest(plant.crop(), null).asQuantity(2));
+    }
+
+    public boolean plantSeed(Block block, ItemStack seed) {
+        String type = seed.hasItemMeta() ? DrugItemMetadata.getItemType(seed.getItemMeta()) : null;
+        if (type == null || !type.startsWith("seed_") || !crops.containsKey(type.substring(5))
+                || !block.isEmpty()
+                || !(block.getRelative(0, -1, 0).getBlockData() instanceof org.bukkit.block.data.type.Farmland soil)
+                || soil.getMoisture() == 0) return false;
+        block.setType(Material.WHEAT, false);
+        plants.put(key(block), new Plant(type.substring(5), 0));
+        save();
+        return true;
+    }
+
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void plant(PlayerInteractEvent event) {
         if (event.getAction() != org.bukkit.event.block.Action.RIGHT_CLICK_BLOCK || event.getItem() == null) return;

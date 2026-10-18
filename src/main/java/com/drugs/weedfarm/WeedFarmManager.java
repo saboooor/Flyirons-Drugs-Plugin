@@ -21,6 +21,7 @@ public class WeedFarmManager {
     private final Map<String, WeedFarm> farmsById = new ConcurrentHashMap<>();
     private final Map<String, String> farmByController = new ConcurrentHashMap<>();
     private final Map<UUID, String> farmByVillager = new ConcurrentHashMap<>();
+    private final java.util.Set<String> packed = ConcurrentHashMap.newKeySet();
     private final File file;
 
     public WeedFarmManager(File dataFolder) {
@@ -35,13 +36,44 @@ public class WeedFarmManager {
         return farm;
     }
 
+    public void packFarm(WeedFarm farm) {
+        farmByController.remove(locKey(farm.getControllerLocation()));
+        packed.add(farm.getFarmId());
+        save();
+    }
+
+    public boolean restoreFarm(WeedFarm farm) {
+        String id = farm.getFarmId();
+        if (farmsById.containsKey(id) && !packed.contains(id)) return false;
+        WeedFarm old = farmsById.get(id);
+        if (old != null) {
+            for (UUID worker : old.getAssignedVillagers()) farmByVillager.remove(worker, id);
+            // Assignments may have changed while the controller was packed.
+            farm.getAssignedVillagers().retainAll(old.getAssignedVillagers());
+        }
+        farm.getAssignedVillagers().removeIf(worker -> farmByVillager.containsKey(worker)
+                && !id.equals(farmByVillager.get(worker)));
+        // Placement deliberately drops links to workers that cannot currently be found.
+        farm.getAssignedVillagers().removeIf(worker -> {
+            Entity entity = Bukkit.getEntity(worker);
+            return !(entity instanceof Villager villager) || !villager.isValid() || villager.isDead();
+        });
+        farmsById.put(id, farm);
+        packed.remove(id);
+        farmByController.put(locKey(farm.getControllerLocation()), id);
+        for (UUID worker : farm.getAssignedVillagers()) farmByVillager.put(worker, id);
+        refreshVillagerPersistence(farm);
+        save();
+        return true;
+    }
+
     public WeedFarm getByController(Location location) {
         String id = farmByController.get(locKey(location));
         return id == null ? null : farmsById.get(id);
     }
 
     public Collection<WeedFarm> getFarms() {
-        return farmsById.values();
+        return farmsById.values().stream().filter(farm -> !packed.contains(farm.getFarmId())).toList();
     }
 
     public WeedFarm getByVillager(UUID uuid) {
@@ -62,6 +94,7 @@ public class WeedFarmManager {
         boolean assigned = farm.getAssignedVillagers().add(villagerId);
         Entity entity = Bukkit.getEntity(villagerId);
         if (entity instanceof Villager villager && villager.isValid() && !villager.isDead()) {
+            villager.setProfession(Villager.Profession.FARMER);
             villager.setPersistent(true);
             villager.setRemoveWhenFarAway(false);
         }
@@ -113,6 +146,7 @@ public class WeedFarmManager {
     }
 
     public void removeFarm(WeedFarm farm) {
+        packed.remove(farm.getFarmId());
         farmsById.remove(farm.getFarmId());
         farmByController.remove(locKey(farm.getControllerLocation()));
         for (UUID villagerId : farm.getAssignedVillagers()) {
@@ -132,6 +166,8 @@ public class WeedFarmManager {
             yaml.set(base + ".controller", serializeLocation(farm.getControllerLocation()));
             yaml.set(base + ".world", farm.getWorldId() == null ? null : farm.getWorldId().toString());
             yaml.set(base + ".enabled", farm.isEnabled());
+            yaml.set(base + ".packed", packed.contains(farm.getFarmId()));
+            yaml.set(base + ".region-defined", farm.hasRegion());
             yaml.set(base + ".region.minX", farm.getMinX());
             yaml.set(base + ".region.minY", farm.getMinY());
             yaml.set(base + ".region.minZ", farm.getMinZ());
@@ -148,11 +184,12 @@ public class WeedFarmManager {
         try {
             yaml.save(file);
         } catch (IOException e) {
-            Bukkit.getLogger().warning("[FlyironsDrugs] Failed to save weed farms: " + e.getMessage());
+            Bukkit.getLogger().warning("[LumiDrugs] Failed to save weed farms: " + e.getMessage());
         }
     }
 
     public void load() {
+        packed.clear();
         farmsById.clear();
         farmByController.clear();
         farmByVillager.clear();
@@ -177,7 +214,7 @@ public class WeedFarmManager {
             farm.setEnabled(yaml.getBoolean(base + ".enabled", true));
             String worldRaw = yaml.getString(base + ".world");
             World world = worldRaw != null ? Bukkit.getWorld(UUID.fromString(worldRaw)) : controller.getWorld();
-            if (world != null) {
+            if (world != null && yaml.getBoolean(base + ".region-defined", true)) {
                 Location first = new Location(world,
                         yaml.getInt(base + ".region.minX", controller.getBlockX()),
                         yaml.getInt(base + ".region.minY", controller.getBlockY()),
@@ -202,7 +239,8 @@ public class WeedFarmManager {
             }
 
             farmsById.put(farmId, farm);
-            farmByController.put(locKey(controller), farmId);
+            if (yaml.getBoolean(base + ".packed", false)) packed.add(farmId);
+            else farmByController.put(locKey(controller), farmId);
             refreshVillagerPersistence(farm);
         }
     }

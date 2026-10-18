@@ -1,4 +1,4 @@
-# Flyiron's Drugs Plugin — Player Wiki
+# LumiDrugs Plugin — Player Wiki
 
 > This page is for **players**.
 > 
@@ -9,7 +9,7 @@
 
 ## 1) What This System Is
 
-Flyiron's Drugs adds a long-term risk/reward layer to survival gameplay.
+LumiDrugs adds a long-term risk/reward layer to survival gameplay.
 
 You can take items for strong short-term buffs, but repeated use can cause:
 

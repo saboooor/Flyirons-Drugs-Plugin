@@ -2,6 +2,7 @@ package com.drugs.weedfarm;
 
 import com.drugs.CannabisPlantListener;
 import com.drugs.MechanicsConfig;
+import com.drugs.DrugGrowing;
 import org.bukkit.Bukkit;
 import org.bukkit.FluidCollisionMode;
 import org.bukkit.Location;
@@ -27,10 +28,12 @@ public class WeedFarmWorkerService implements Runnable {
     private static final double WORK_REACH_DISTANCE_SQUARED = 2.5 * 2.5;
 
     private final WeedFarmManager manager;
+    private final DrugGrowing growing;
     private final Random random = new Random();
 
-    public WeedFarmWorkerService(WeedFarmManager manager) {
+    public WeedFarmWorkerService(WeedFarmManager manager, DrugGrowing growing) {
         this.manager = manager;
+        this.growing = growing;
     }
 
     @Override
@@ -88,6 +91,20 @@ public class WeedFarmWorkerService implements Runnable {
             int index = (cursor + inspected) % total;
             Block block = blockAtIndex(world, farm, index);
 
+            if (harvests < maxHarvest && growing != null && block.getType() == Material.WHEAT) {
+                Villager worker = selectReachableWorker(workers, block, workerHarvestQuota);
+                if (worker != null) {
+                    List<ItemStack> drops = growing.harvestMature(block);
+                    if (!drops.isEmpty()) {
+                        workerSeeds.add(drops.get(0));
+                        for (int d = 1; d < drops.size(); d++) world.dropItemNaturally(farm.getControllerLocation(), drops.get(d));
+                        consumeQuota(workerHarvestQuota, worker.getUniqueId());
+                        harvests++;
+                        moveWorker(worker, block.getLocation().add(0.5, 0, 0.5));
+                    }
+                }
+            }
+
             if (harvests < maxHarvest && block.getType() == Material.LARGE_FERN) {
                 Villager worker = selectReachableWorker(workers, block, workerHarvestQuota);
                 if (worker != null) {
@@ -106,18 +123,26 @@ public class WeedFarmWorkerService implements Runnable {
                 }
             }
 
-            if (plants < maxPlant && !workerSeeds.isEmpty() && isPlantable(block)) {
+            if (plants < maxPlant && !workerSeeds.isEmpty() && block.getType().isAir()) {
                 Villager planter = selectReachableWorker(workers, block, workerPlantQuota);
                 if (planter != null) {
-                    ItemStack seed = workerSeeds.remove(workerSeeds.size() - 1);
-                    block.setType(Material.FERN, false);
-                    if (CannabisPlantListener.applyPlacedCannabis(block, seed)) {
+                    for (int seedIndex = 0; seedIndex < workerSeeds.size(); seedIndex++) {
+                        ItemStack seed = workerSeeds.get(seedIndex);
+                        boolean planted = false;
+                        if (seed.getType() == Material.FERN && isPlantable(block)) {
+                            block.setType(Material.FERN, false);
+                            planted = CannabisPlantListener.applyPlacedCannabis(block, seed);
+                            if (!planted) block.setType(Material.AIR, false);
+                        } else if (growing != null) {
+                            planted = growing.plantSeed(block, seed);
+                        }
+                        if (!planted) continue;
+                        workerSeeds.remove(seedIndex);
                         plants++;
                         consumeQuota(workerPlantQuota, planter.getUniqueId());
                         moveWorker(planter, block.getLocation().add(0.5, 0, 0.5));
                         world.spawnParticle(Particle.COMPOSTER, block.getLocation().add(0.5, 0.8, 0.5), 4, 0.2, 0.1, 0.2, 0.0);
-                    } else {
-                        block.setType(Material.AIR, false);
+                        break;
                     }
                 }
             }
@@ -223,7 +248,7 @@ public class WeedFarmWorkerService implements Runnable {
     }
 
     private boolean isPlantable(Block block) {
-        return block.getType().isAir() && block.getRelative(0, -1, 0).getType() == Material.DIRT;
+        return block.getType().isAir() && CannabisPlantListener.hasHydratedFarmland(block);
     }
 
     private int farmVolume(WeedFarm farm) {

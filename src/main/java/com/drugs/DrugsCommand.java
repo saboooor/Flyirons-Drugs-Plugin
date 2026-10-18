@@ -36,6 +36,14 @@ public class DrugsCommand implements CommandExecutor {
             return true;
         }
 
+        if (args[0].equalsIgnoreCase("farm")) {
+            if (sender instanceof Player player && args.length == 2) {
+                var controller = DrugsV2.getInstance().getWeedFarmControllerListener();
+                if (controller != null) controller.handleDialogAction(player, args[1]);
+            }
+            return true;
+        }
+
         // /drugs guide <drug> [page]
         if (args[0].equalsIgnoreCase("guide")) {
             if (!(sender instanceof Player player)) {
@@ -90,13 +98,13 @@ public class DrugsCommand implements CommandExecutor {
             }
             sender.sendMessage("§7Right click hydrated farmland with seeds. Keep crops lit and wait until fully grown.");
             sender.sendMessage("§7Break mature crops for ingredients and a reusable seed. Early harvest returns only the seed.");
-            sender.sendMessage("§7Cannabis: plant ferns, wait for large ferns, and harvest with shears for buds and new plants.");
+            sender.sendMessage("§7Cannabis: plant ferns on hydrated farmland with light level 9+, wait for large ferns, and harvest with shears for buds and new plants.");
             return true;
         }
 
         // /drugs help
         if (args[0].equalsIgnoreCase("help")) {
-            sender.sendMessage(ChatColor.GOLD + "-----[ Flyiron's Drugs Help ]-----");
+            sender.sendMessage(ChatColor.GOLD + "-----[ LumiDrugs Help ]-----");
             sender.sendMessage(ChatColor.YELLOW + "/drugs" + ChatColor.GRAY + " - Open the drug selection GUI");
             if (sender.hasPermission("drugs.give")) {
                 sender.sendMessage(ChatColor.YELLOW + "/drugs give <player> <drug|cure|bong|farm-controller|all> [amount]" + ChatColor.GRAY + " - Give drugs/cures to someone");
@@ -272,7 +280,7 @@ public class DrugsCommand implements CommandExecutor {
             CureRegistry.init(DrugsV2.getInstance());
             AddictionManager.reload(DrugsV2.getInstance());
 
-            sender.sendMessage(ChatColor.GREEN + "Flyiron's Drugs configs reloaded successfully.");
+            sender.sendMessage(ChatColor.GREEN + "LumiDrugs configs reloaded successfully.");
             return true;
         }
 
