@@ -36,8 +36,25 @@ class DrugStatusTrackerTest {
         doAnswer(a -> { stored.remove(a.getArgument(0)); return null; }).when(data).remove(any());
     }
 
-    @Test void ordinaryPotionKeysDoNotCountAsDrugUse() {
-        assertTrue(DrugStatusTracker.potionStatus(data, Map.of(statusKey, active)).isEmpty());
+    @Test void untrackedWeaknessIsVisibleWithDurationWithoutInventingDrugSource() {
+        NamespacedKey weaknessKey = new NamespacedKey("flyironsdrugs", "drug_status/minecraft/weakness");
+        var weakness = new DrugStatusTracker.Status(600, 0, List.of("weakness 1"));
+        assertEquals(Map.of("effect/minecraft/weakness", weakness),
+                DrugStatusTracker.potionStatus(data, Map.of(weaknessKey, weakness)));
+    }
+
+    @Test void withdrawalIsReportedAsWithdrawal() {
+        stored.put(statusKey, "withdrawal/cocaine");
+        assertEquals(Map.of("withdrawal/cocaine", active),
+                DrugStatusTracker.potionStatus(data, Map.of(statusKey, active)));
+    }
+
+    @Test void trackedAndUntrackedEffectsAppearTogetherWithoutDuplicates() {
+        stored.put(statusKey, "cocaine");
+        NamespacedKey weaknessKey = new NamespacedKey("flyironsdrugs", "drug_status/minecraft/weakness");
+        var weakness = new DrugStatusTracker.Status(600, 0, List.of("weakness 1"));
+        assertEquals(Map.of("cocaine", active, "effect/minecraft/weakness", weakness),
+                DrugStatusTracker.potionStatus(data, Map.of(statusKey, active, weaknessKey, weakness)));
     }
 
     @Test void attributedLiveEffectReportsDrugAndExpires() {

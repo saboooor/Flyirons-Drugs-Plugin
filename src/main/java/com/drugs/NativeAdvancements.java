@@ -12,6 +12,7 @@ import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.player.PlayerJoinEvent;
+import org.bukkit.scheduler.BukkitTask;
 
 import java.io.File;
 import java.io.IOException;
@@ -20,74 +21,84 @@ import java.util.*;
 /** Uses Minecraft's advancement registry, UI, notifications and player persistence. */
 public final class NativeAdvancements implements Listener {
     private static final NamespacedKey ROOT = key("root");
-    private static final Set<NamespacedKey> registered = new LinkedHashSet<>();
+    private static BukkitTask registrationTask;
+    private static final Map<UUID, Set<String>> pendingAwards = new HashMap<>();
+    private static final Map<UUID, Set<String>> pendingDrugs = new HashMap<>();
 
     private static NamespacedKey key(String id) {
         return new NamespacedKey("flyironsdrugs", "achievements/" + id);
     }
 
-    @SuppressWarnings("deprecation")
     public static void reload() {
-        if (!AchievementSettingsLoader.isEnabled()) return;
-        Map<UUID, Map<String, Collection<String>>> completed = new HashMap<>();
-        for (Player player : Bukkit.getOnlinePlayers()) {
-            Map<String, Collection<String>> ids = new HashMap<>();
-            for (NamespacedKey key : registered) {
-                Advancement advancement = Bukkit.getAdvancement(key);
-                if (advancement != null) {
-                    ids.put(key.getKey().substring("achievements/".length()),
-                            new ArrayList<>(player.getAdvancementProgress(advancement).getAwardedCriteria()));
-                }
-            }
-            completed.put(player.getUniqueId(), ids);
+        if (registrationTask != null) registrationTask.cancel();
+        registrationTask = null;
+        if (!AchievementSettingsLoader.isEnabled()) {
+            pendingAwards.clear();
+            pendingDrugs.clear();
+            return;
         }
-        List<NamespacedKey> old = new ArrayList<>(registered);
-        Collections.reverse(old);
-        for (NamespacedKey key : old) Bukkit.getUnsafe().removeAdvancement(key);
-        registered.clear();
-        register(ROOT, definition("Drugs", "Drug milestones", Material.BREWING_STAND, true));
+        // Registration may rebuild advancement trees and resend player data. Never do it
+        // inside onEnable, and register at most one missing advancement per server tick.
+        Map<NamespacedKey, JsonObject> definitions = new LinkedHashMap<>();
+        definitions.put(ROOT, definition("Drugs", "Drug milestones", Material.BREWING_STAND, true));
         for (CustomAchievement achievement : CustomAchievementLoader.getAllAchievements()) {
-            if (achievement.isEnabled()) {
+            if (!achievement.isEnabled()) continue;
+            try {
+                JsonObject json = definition(achievement.getTitle(), achievement.getDescription(),
+                        achievement.getCompletedIcon(), false);
+                if (achievement.getTrigger().equals("all_drugs_used") && !DrugRegistry.getRegisteredDrugNames().isEmpty()) {
+                    JsonObject criteria = new JsonObject();
+                    for (String drug : DrugRegistry.getRegisteredDrugNames()) {
+                        JsonObject criterion = new JsonObject();
+                        criterion.addProperty("trigger", "minecraft:impossible");
+                        criteria.add("used_" + drug, criterion);
+                    }
+                    json.add("criteria", criteria);
+                }
+                definitions.put(key(achievement.getId()), json);
+            } catch (IllegalArgumentException exception) {
+                DrugsV2.getInstance().getLogger().warning("Cannot register advancement "
+                        + achievement.getId() + ": " + exception.getMessage());
+            }
+        }
+        Queue<Map.Entry<NamespacedKey, JsonObject>> queue = new ArrayDeque<>(definitions.entrySet());
+        registrationTask = Bukkit.getScheduler().runTaskTimer(DrugsV2.getInstance(), () -> {
+            while (!queue.isEmpty()) {
+                var entry = queue.remove();
+                if (Bukkit.getAdvancement(entry.getKey()) != null) continue;
                 try {
-                    JsonObject json = definition(achievement.getTitle(),
-                            achievement.getDescription(), achievement.getCompletedIcon(), false);
-                    if (achievement.getTrigger().equals("all_drugs_used") && !DrugRegistry.getRegisteredDrugNames().isEmpty()) {
-                        JsonObject criteria = new JsonObject();
-                        for (String drug : DrugRegistry.getRegisteredDrugNames()) {
-                            JsonObject criterion = new JsonObject();
-                            criterion.addProperty("trigger", "minecraft:impossible");
-                            criteria.add("used_" + drug, criterion);
-                        }
-                        json.add("criteria", criteria);
-                    }
-                    register(key(achievement.getId()), json);
-                } catch (IllegalArgumentException exception) {
+                    register(entry.getKey(), entry.getValue());
+                } catch (RuntimeException exception) {
                     DrugsV2.getInstance().getLogger().warning("Cannot register advancement "
-                            + achievement.getId() + ": " + exception.getMessage());
+                            + entry.getKey() + ": " + exception.getMessage());
                 }
+                break;
             }
-        }
-        for (Player player : Bukkit.getOnlinePlayers()) {
-            for (var entry : completed.get(player.getUniqueId()).entrySet()) {
-                Advancement advancement = Bukkit.getAdvancement(key(entry.getKey()));
-                if (advancement != null) {
-                    for (String criterion : entry.getValue()) {
-                        if (advancement.getCriteria().contains(criterion)) {
-                            player.getAdvancementProgress(advancement).awardCriteria(criterion);
-                        }
-                    }
+            if (queue.isEmpty()) {
+                registrationTask.cancel();
+                registrationTask = null;
+                for (Player player : Bukkit.getOnlinePlayers()) {
+                    prepare(player);
+                    for (String id : pendingAwards.getOrDefault(player.getUniqueId(), Set.of())) award(player, id);
+                    for (String drug : pendingDrugs.getOrDefault(player.getUniqueId(), Set.of())) trackDrug(player, drug);
                 }
+                pendingAwards.clear();
+                pendingDrugs.clear();
             }
-            prepare(player);
-        }
+        }, 1L, 1L);
+    }
+
+    public static void shutdown() {
+        if (registrationTask != null) registrationTask.cancel();
+        registrationTask = null;
+        pendingAwards.clear();
+        pendingDrugs.clear();
     }
 
     @SuppressWarnings("deprecation")
     private static void register(NamespacedKey key, JsonObject definition) {
-        Advancement advancement = Bukkit.getAdvancement(key);
-        if (advancement == null) advancement = Bukkit.getUnsafe().loadAdvancement(key, definition.toString());
+        Advancement advancement = Bukkit.getUnsafe().loadAdvancement(key, definition.toString());
         if (advancement == null) throw new IllegalArgumentException("Server rejected " + key);
-        registered.add(key);
     }
 
     static JsonObject definition(String title, String description, Material icon, boolean root) {
@@ -119,7 +130,12 @@ public final class NativeAdvancements implements Listener {
 
     public static void award(Player player, String id) {
         Advancement advancement = Bukkit.getAdvancement(key(id));
-        if (advancement == null) return;
+        if (advancement == null) {
+            if (registrationTask != null) {
+                pendingAwards.computeIfAbsent(player.getUniqueId(), ignored -> new HashSet<>()).add(id);
+            }
+            return;
+        }
         AdvancementProgress progress = player.getAdvancementProgress(advancement);
         for (String criterion : progress.getRemainingCriteria()) progress.awardCriteria(criterion);
     }
@@ -131,6 +147,9 @@ public final class NativeAdvancements implements Listener {
 
     public static void trackDrug(Player player, String drug) {
         if (!AchievementSettingsLoader.isEnabled()) return;
+        if (registrationTask != null) {
+            pendingDrugs.computeIfAbsent(player.getUniqueId(), ignored -> new HashSet<>()).add(drug);
+        }
         for (CustomAchievement achievement : CustomAchievementLoader.getAchievementsByTrigger("all_drugs_used")) {
             if (!achievement.isEnabled()) continue;
             Advancement advancement = Bukkit.getAdvancement(key(achievement.getId()));
@@ -146,7 +165,7 @@ public final class NativeAdvancements implements Listener {
     }
 
     private static void prepare(Player player) {
-        if (!AchievementSettingsLoader.isEnabled()) return;
+        if (!AchievementSettingsLoader.isEnabled() || registrationTask != null) return;
         award(player, "root");
         File file = new File(DrugsV2.getInstance().getDataFolder(),
                 "data/achievements/" + player.getUniqueId() + ".yml");

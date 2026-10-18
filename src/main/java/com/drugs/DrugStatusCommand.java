@@ -27,12 +27,22 @@ public final class DrugStatusCommand implements CommandExecutor {
         }
         var status = DrugStatusTracker.getStatus(player);
         if (status.isEmpty()) {
-            player.sendMessage(ChatColor.GREEN + "You are fully sober. No drugs are currently affecting you.");
+            player.sendMessage(ChatColor.GREEN + "You are fully sober. No drugs or potion effects are currently affecting you.");
         } else {
-            player.sendMessage(ChatColor.GOLD + "You are not sober. Current drugs:");
+            boolean hasDrug = status.keySet().stream().anyMatch(id ->
+                    !id.startsWith(DrugStatusTracker.UNKNOWN_PREFIX) && !id.startsWith(DrugStatusTracker.WITHDRAWAL_PREFIX));
+            player.sendMessage(ChatColor.GOLD + (hasDrug
+                    ? "You are not sober. Current drugs and effects:"
+                    : "You have active effects. Current status:"));
             for (var entry : status.entrySet()) {
-                DrugEffectProfile profile = DrugRegistry.getProfileById(entry.getKey());
-                String name = profile == null ? entry.getKey() : profile.getDisplayName();
+                String id = entry.getKey();
+                boolean unknown = id.startsWith(DrugStatusTracker.UNKNOWN_PREFIX);
+                boolean withdrawal = id.startsWith(DrugStatusTracker.WITHDRAWAL_PREFIX);
+                String drugId = withdrawal ? id.substring(DrugStatusTracker.WITHDRAWAL_PREFIX.length()) : id;
+                DrugEffectProfile profile = unknown ? null : DrugRegistry.getProfileById(drugId);
+                String name = profile == null ? drugId : profile.getDisplayName();
+                if (unknown) name = "Potion effect (source unknown)";
+                else if (withdrawal) name = "Withdrawal: " + name;
                 var details = entry.getValue();
                 String timing = details.delayTicks() > 0
                         ? "kicks in: " + formatDuration(details.delayTicks()) + "; duration: " + formatDuration(details.remainingTicks())

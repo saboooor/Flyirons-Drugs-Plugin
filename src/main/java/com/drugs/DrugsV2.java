@@ -10,6 +10,8 @@ import com.drugs.weedfarm.WeedFarmManager;
 import com.drugs.weedfarm.WeedFarmWorkerService;
 
 import java.io.File;
+import java.util.List;
+import java.util.logging.Level;
 
 /**
  * Main plugin class for DrugsV2.
@@ -24,6 +26,12 @@ public class DrugsV2 extends JavaPlugin {
     private WeedFarmManager weedFarmManager;
     private LsdEffectManager lsdEffectManager;
     private SalviaEffectManager salviaEffectManager;
+    private PluginStartup startup;
+    private DrugsPlaceholderExpansion placeholderExpansion;
+    private boolean cannabisLoaded;
+    private boolean bongsLoaded;
+    private boolean farmsLoaded;
+    private boolean addictionLoaded;
 
     public static DrugsV2 getInstance() {
         return instance;
@@ -32,78 +40,96 @@ public class DrugsV2 extends JavaPlugin {
     @Override
     public void onEnable() {
         instance = this;
+        // PlugMan calls this on the server thread. Defer heavy initialization so ticks
+        // continue between phases, and keep commands safe until all services are ready.
+        for (String name : List.of("drugs", "drugstatus", "tolerance", "strains")) {
+            getCommand(name).setExecutor((sender, command, label, args) -> {
+                sender.sendMessage("§eFlyiron's Drugs is initializing. Please try again shortly.");
+                return true;
+            });
+            getCommand(name).setTabCompleter((sender, command, label, args) -> List.of());
+        }
+        startup = new PluginStartup(this, List.of(
+                new PluginStartup.Step("default configuration", () -> {
+                    saveDefaultConfig();
+                    saveRecipesConfig();
+                    saveToleranceConfig();
+                    saveAchievementSettingsConfig();
+                    saveAchievementsConfig();
+                    saveOverdoseConfig();
+                    saveAddictionConfig();
+                    saveStrainsConfig();
+                    saveBongConfig();
+                    saveMechanicsConfig();
+                }),
+                new PluginStartup.Step("tolerance configuration", () -> ToleranceConfigLoader.load(getDataFolder())),
+                new PluginStartup.Step("achievement settings", () -> AchievementSettingsLoader.load(getDataFolder())),
+                new PluginStartup.Step("overdose configuration", () -> OverdoseEffectManager.load(getDataFolder())),
+                new PluginStartup.Step("addiction configuration", () -> AddictionConfigLoader.load(this)),
+                new PluginStartup.Step("strain configuration", () -> StrainConfigLoader.load(getDataFolder())),
+                new PluginStartup.Step("bong and mechanics configuration", () -> {
+                    BongConfigLoader.load(getDataFolder());
+                    MechanicsConfig.load(getDataFolder());
+                }),
+                new PluginStartup.Step("saved cannabis plants", () -> {
+                    CannabisPlantRegistry.init(getDataFolder());
+                    cannabisLoaded = true;
+                }),
+                new PluginStartup.Step("saved bongs", () -> {
+                    BongRegistry.init(getDataFolder());
+                    bongsLoaded = true;
+                }),
+                new PluginStartup.Step("saved weed farms", () -> {
+                    weedFarmManager = new WeedFarmManager(getDataFolder());
+                    weedFarmManager.load();
+                    farmsLoaded = true;
+                }),
+                new PluginStartup.Step("ingredient crops and recipes", () -> drugGrowing = new DrugGrowing(this)),
+                new PluginStartup.Step("drug recipes", () -> DrugRegistry.init(this)),
+                new PluginStartup.Step("achievement definitions", () -> CustomAchievementLoader.load(getDataFolder())),
+                new PluginStartup.Step("cure recipes", () -> CureRegistry.init(this)),
+                new PluginStartup.Step("bong and farm recipes", () -> {
+                    registerBongRecipe();
+                    registerFarmControllerRecipe();
+                }),
+                new PluginStartup.Step("saved addiction data", () -> {
+                    AddictionManager.init(this);
+                    addictionLoaded = true;
+                }),
+                new PluginStartup.Step("gameplay listeners and services", this::startGameplay)
+        ), () -> getLogger().info("Flyiron's Drugs is ready!"), exception -> {
+            getLogger().log(Level.SEVERE, "Cannot initialize Flyiron's Drugs", exception);
+            getServer().getPluginManager().disablePlugin(this);
+        });
+        startup.start();
+        getLogger().info("Flyiron's Drugs initialization scheduled across server ticks.");
+    }
 
-        // Load default configs
-        saveDefaultConfig();
-        saveRecipesConfig();
-        saveToleranceConfig();
-        saveAchievementSettingsConfig();
-        saveAchievementsConfig();
-        saveOverdoseConfig();
-        saveAddictionConfig();
-        saveStrainsConfig();
-        saveBongConfig();
-        saveMechanicsConfig();
-
-        // Initialize performance optimizer first
+    private void startGameplay() {
         PerformanceOptimizer.initialize();
-        
-        // Load tolerance settings
-        ToleranceConfigLoader.load(getDataFolder());
-        
-        // Load achievement settings and achievements
-        AchievementSettingsLoader.load(getDataFolder());
-        
-        // Load overdose effect settings
-        OverdoseEffectManager.load(getDataFolder());
-
-        // Load addiction settings and cure definitions
-        AddictionConfigLoader.load(this);
-        StrainConfigLoader.load(getDataFolder());
-        BongConfigLoader.load(getDataFolder());
-        MechanicsConfig.load(getDataFolder());
-        CannabisPlantRegistry.init(getDataFolder());
-        BongRegistry.init(getDataFolder());
-        weedFarmManager = new WeedFarmManager(getDataFolder());
-        weedFarmManager.load();
-
-        drugGrowing = new DrugGrowing(this);
-        getServer().getPluginManager().registerEvents(drugGrowing, this);
-
-        // Initialize core drug system
-        DrugRegistry.init(this);
-        CustomAchievementLoader.load(getDataFolder());
-        CureRegistry.init(this);
-        registerBongRecipe();
-        registerFarmControllerRecipe();
-
-        AddictionManager.init(this);
-
-        // Start tolerance decay
         ToleranceTracker.startDecayTask();
-
-        // Register events
-        getServer().getPluginManager().registerEvents(new DrugStatusTracker(), this);
-        getServer().getPluginManager().registerEvents(new DrugMenuListener(), this);
-        getServer().getPluginManager().registerEvents(new DrugUseListener(), this);
-        getServer().getPluginManager().registerEvents(new AddictionListener(), this);
-        getServer().getPluginManager().registerEvents(new CannabisPlantListener(), this);
-        getServer().getPluginManager().registerEvents(new StrainCraftingListener(), this);
-        getServer().getPluginManager().registerEvents(new HarvestCraftingListener(), this);
-        getServer().getPluginManager().registerEvents(new StrainsMenuListener(), this);
+        var manager = getServer().getPluginManager();
+        manager.registerEvents(drugGrowing, this);
+        manager.registerEvents(new DrugStatusTracker(), this);
+        manager.registerEvents(new DrugMenuListener(), this);
+        manager.registerEvents(new DrugUseListener(), this);
+        manager.registerEvents(new AddictionListener(), this);
+        manager.registerEvents(new CannabisPlantListener(), this);
+        manager.registerEvents(new StrainCraftingListener(), this);
+        manager.registerEvents(new HarvestCraftingListener(), this);
+        manager.registerEvents(new StrainsMenuListener(), this);
         bongListener = new BongListener();
-        getServer().getPluginManager().registerEvents(bongListener, this);
+        manager.registerEvents(bongListener, this);
         lsdEffectManager = new LsdEffectManager(this);
-        getServer().getPluginManager().registerEvents(lsdEffectManager, this);
+        manager.registerEvents(lsdEffectManager, this);
         salviaEffectManager = new SalviaEffectManager(this);
-        getServer().getPluginManager().registerEvents(salviaEffectManager, this);
-        Bukkit.getPluginManager().registerEvents(new NativeAdvancements(), DrugsV2.getInstance());
-        getServer().getPluginManager().registerEvents(new WeedFarmControllerListener(weedFarmManager), this);
-        getServer().getScheduler().runTaskTimer(this, new WeedFarmWorkerService(weedFarmManager), MechanicsConfig.getWorkerTickInterval(), MechanicsConfig.getWorkerTickInterval());
+        manager.registerEvents(salviaEffectManager, this);
+        manager.registerEvents(new NativeAdvancements(), this);
+        manager.registerEvents(new WeedFarmControllerListener(weedFarmManager), this);
+        getServer().getScheduler().runTaskTimer(this, new WeedFarmWorkerService(weedFarmManager),
+                MechanicsConfig.getWorkerTickInterval(), MechanicsConfig.getWorkerTickInterval());
+        getServer().getScheduler().runTask(this, () -> BongRegistry.respawnMissing(bongListener));
 
-        BongRegistry.respawnMissing(bongListener);
-
-        // Register commands
         getCommand("drugs").setExecutor(new DrugsCommand());
         getCommand("drugs").setTabCompleter(new DrugsTabCompleter());
         getCommand("drugstatus").setExecutor(new DrugStatusCommand());
@@ -111,32 +137,37 @@ public class DrugsV2 extends JavaPlugin {
         StrainsCommand strainsCommand = new StrainsCommand();
         getCommand("strains").setExecutor(strainsCommand);
         getCommand("strains").setTabCompleter(strainsCommand);
-
-        // Register PlaceholderAPI expansion if available
-        if (Bukkit.getPluginManager().getPlugin("PlaceholderAPI") != null) {
-            new DrugsPlaceholderExpansion(this).register();
-            getLogger().info("PlaceholderAPI expansion registered successfully!");
+        if (manager.getPlugin("PlaceholderAPI") != null) {
+            placeholderExpansion = new DrugsPlaceholderExpansion(this);
+            placeholderExpansion.register();
         }
-
-        getLogger().info("Flyiron's Drugs enabled!");
     }
 
     @Override
     public void onDisable() {
-        CannabisPlantRegistry.save();
-        if (drugGrowing != null) drugGrowing.save();
-        BongRegistry.save();
-        if (weedFarmManager != null) {
-            weedFarmManager.save();
-        }
-        if (lsdEffectManager != null) {
-            lsdEffectManager.cleanupAll();
-        }
-        if (salviaEffectManager != null) {
-            salviaEffectManager.cleanupAll();
-        }
-        AddictionManager.shutdown();
+        if (startup != null) startup.cancel();
+        NativeAdvancements.shutdown();
+        if (placeholderExpansion != null) placeholderExpansion.unregister();
+        if (lsdEffectManager != null) lsdEffectManager.cleanupAll();
+        if (salviaEffectManager != null) salviaEffectManager.cleanupAll();
+        // Save only successfully loaded stores; unloading during initialization must
+        // not replace saved player data with an empty, partly initialized registry.
+        if (cannabisLoaded) savePhase("saving cannabis plants", CannabisPlantRegistry::save);
+        if (drugGrowing != null) savePhase("saving ingredient crops", drugGrowing::save);
+        if (bongsLoaded) savePhase("saving bongs", BongRegistry::save);
+        if (farmsLoaded) savePhase("saving weed farms", weedFarmManager::save);
+        if (addictionLoaded) savePhase("saving addiction data", AddictionManager::shutdown);
         getLogger().info("Flyiron's Drugs disabled.");
+    }
+
+    private void savePhase(String name, Runnable action) {
+        getLogger().info("Shutdown phase: " + name);
+        long started = System.nanoTime();
+        try {
+            action.run();
+        } finally {
+            PluginStartup.reportDuration(this, name, started);
+        }
     }
 
     public void saveRecipesConfig() {

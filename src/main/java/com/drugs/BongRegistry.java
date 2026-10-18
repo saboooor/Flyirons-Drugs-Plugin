@@ -180,9 +180,7 @@ public final class BongRegistry {
                 continue;
             }
 
-            if (!anchor.getChunk().isLoaded()) {
-                anchor.getChunk().load();
-            }
+            if (!anchor.getWorld().isChunkLoaded(anchor.getBlockX() >> 4, anchor.getBlockZ() >> 4)) continue;
 
             Entity existingInteraction = getEntity(data.interactionId);
             boolean allDisplaysPresent = !data.displayIds.isEmpty();
@@ -197,6 +195,20 @@ public final class BongRegistry {
                 continue;
             }
 
+            listener.removeOrphanEntitiesAtAnchor(anchor);
+            listener.spawnOrReplace(anchor, data.yaw, data.getDurability());
+        }
+    }
+
+    public static void restoreChunk(org.bukkit.Chunk chunk, BongListener listener) {
+        for (BongData data : new ArrayList<>(bongs.values())) {
+            Location anchor = data.getAnchor();
+            if (anchor == null || !anchor.getWorld().equals(chunk.getWorld())
+                    || (anchor.getBlockX() >> 4) != chunk.getX() || (anchor.getBlockZ() >> 4) != chunk.getZ()) continue;
+            Entity interaction = getEntity(data.interactionId);
+            boolean displaysPresent = !data.displayIds.isEmpty()
+                    && data.displayIds.stream().allMatch(id -> getEntity(id) != null);
+            if (interaction != null && displaysPresent) continue;
             listener.removeOrphanEntitiesAtAnchor(anchor);
             listener.spawnOrReplace(anchor, data.yaw, data.getDurability());
         }

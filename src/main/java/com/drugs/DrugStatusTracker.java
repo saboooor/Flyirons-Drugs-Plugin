@@ -27,6 +27,9 @@ public final class DrugStatusTracker implements Listener {
         }
     }
 
+    static final String UNKNOWN_PREFIX = "effect/";
+    static final String WITHDRAWAL_PREFIX = "withdrawal/";
+
     private static final String PREFIX = "drug_status/";
 
     private static NamespacedKey key(PotionEffectType type) {
@@ -39,7 +42,7 @@ public final class DrugStatusTracker implements Listener {
         }
     }
 
-    /** Only attributed effects that still exist count as intoxication. */
+    /** Reports all live effects, preserving known drug sources and unknown sources. */
     public static Map<String, Status> getStatus(Player player) {
         Map<String, Status> status = new TreeMap<>();
         Map<NamespacedKey, Status> activeKeys = new HashMap<>();
@@ -67,13 +70,20 @@ public final class DrugStatusTracker implements Listener {
 
     static Map<String, Status> potionStatus(PersistentDataContainer data, Map<NamespacedKey, Status> activeKeys) {
         Map<String, Status> status = new TreeMap<>();
+        var attributed = new java.util.HashSet<NamespacedKey>();
         for (NamespacedKey key : data.getKeys()) {
             if (!isStatusKey(key)) continue;
             String drug = data.get(key, PersistentDataType.STRING);
             if (drug != null && activeKeys.containsKey(key)) {
                 merge(status, drug, activeKeys.get(key));
+                attributed.add(key);
             } else {
                 data.remove(key);
+            }
+        }
+        for (var entry : activeKeys.entrySet()) {
+            if (!attributed.contains(entry.getKey())) {
+                status.put(UNKNOWN_PREFIX + entry.getKey().getKey().substring(PREFIX.length()), entry.getValue());
             }
         }
         return status;

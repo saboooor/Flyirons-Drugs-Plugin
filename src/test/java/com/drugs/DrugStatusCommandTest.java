@@ -51,6 +51,33 @@ class DrugStatusCommandTest {
         assertEquals("indefinite", DrugStatusCommand.formatDuration(-1));
     }
 
+    @Test void untrackedWeaknessDoesNotShowFullySober() {
+        Player player = mock(Player.class);
+        when(player.hasPermission("drugs.status")).thenReturn(true);
+        try (var tracker = mockStatic(DrugStatusTracker.class)) {
+            tracker.when(() -> DrugStatusTracker.getStatus(player)).thenReturn(
+                    Map.of("effect/minecraft/weakness", new DrugStatusTracker.Status(600, 0, List.of("weakness 1"))));
+            DrugStatusCommand.show(player);
+            verify(player, never()).sendMessage(contains("fully sober"));
+            verify(player).sendMessage(contains("source unknown"));
+            verify(player).sendMessage(contains("remaining: 30s"));
+            verify(player).sendMessage(contains("weakness 1"));
+        }
+    }
+
+    @Test void withdrawalIsLabeledSeparatelyFromDrugUse() {
+        Player player = mock(Player.class);
+        when(player.hasPermission("drugs.status")).thenReturn(true);
+        try (var tracker = mockStatic(DrugStatusTracker.class)) {
+            tracker.when(() -> DrugStatusTracker.getStatus(player)).thenReturn(
+                    Map.of("withdrawal/cocaine", new DrugStatusTracker.Status(-1, 0, List.of("weakness 1"))));
+            DrugStatusCommand.show(player);
+            verify(player).sendMessage(contains("Withdrawal: cocaine"));
+            verify(player).sendMessage(contains("indefinite"));
+            verify(player, never()).sendMessage(contains("fully sober"));
+        }
+    }
+
     @Test void consoleGetsPlayerOnlyMessage() {
         CommandSender console = mock(CommandSender.class);
         DrugStatusCommand.show(console);

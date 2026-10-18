@@ -218,7 +218,7 @@ public class AddictionManager {
     private static void applyWithdrawalEffects(Player player, AddictionDrugProfile profile, int duration) {
         for (WithdrawalEffect effect : profile.getWithdrawalEffects()) {
             PotionEffect potion = new PotionEffect(effect.getType(), duration, effect.getAmplifier(), true, true, true);
-            player.addPotionEffect(potion);
+            DrugStatusTracker.applyEffect(player, DrugStatusTracker.WITHDRAWAL_PREFIX + profile.getId(), potion);
         }
     }
 

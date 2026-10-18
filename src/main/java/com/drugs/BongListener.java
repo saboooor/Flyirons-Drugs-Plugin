@@ -41,6 +41,12 @@ import java.util.UUID;
 
 public class BongListener implements Listener {
 
+    @EventHandler
+    public void onEntitiesLoad(org.bukkit.event.world.EntitiesLoadEvent event) {
+        // Entities are available here; ChunkLoadEvent may fire before persisted entities load.
+        BongRegistry.restoreChunk(event.getChunk(), this);
+    }
+
     private static final String WATER_IN_GLASS_TEXTURE = "eyJ0ZXh0dXJlcyI6eyJTS0lOIjp7InVybCI6Imh0dHA6Ly90ZXh0dXJlcy5taW5lY3JhZnQubmV0L3RleHR1cmUvZjA0YzgyMTRhYjhkZDAwNGJlYmE2YTQxODg2MDQ0NzBhODM4ZmViMWFlOTJlZTYyZDFkMTVlMGRmMGNlYmZmNyJ9fX0=";
     private static final float BASE_MODEL_YAW = 180.0f;
     private static final String BONG_ANCHOR_PDC = "bong_anchor";

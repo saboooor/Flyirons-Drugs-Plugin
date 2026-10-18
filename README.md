@@ -53,6 +53,8 @@ Compared to a basic consumable-effects plugin, this version includes:
 5. Review generated config files and adjust balance if needed.
 6. Use `/drugs reload` after config edits.
 
+Plugin enable initializes one phase per server tick; commands show an initializing message until services are ready. Console logs name startup/shutdown phases and warn when a phase exceeds 50 ms. PlugMan still performs synchronous plugin unloading, class loading and final data saves, so a hot reload may pause ticks; use these timing logs and a watchdog thread dump to identify any remaining long pause.
+
 ---
 
 ## How to Use the Plugin (Gameplay + Admin Guide)
@@ -98,7 +100,7 @@ Compared to a basic consumable-effects plugin, this version includes:
 - `/strains`  
   Opens the cannabis strain index GUI.
 
-- `/drugstatus` or `/drugs status` → Lists drugs currently affecting you, their remaining durations and effects, including onset delays for LSD/salvia, or confirms you are fully sober. Tolerance and addiction alone do not count as being high.
+- `/drugstatus` or `/drugs status` → Lists active drugs, withdrawal and other potion effects with remaining durations, strengths and LSD/salvia onset delays. Effects with no recorded source are labeled source unknown. Confirms you are fully sober only when no drug or potion effects remain. Tolerance and addiction alone do not count as being high.
 - `/drugs achievements`  
   Explains how to open Minecraft’s Advancements screen (default key: L), then select the Drugs tab.
 
