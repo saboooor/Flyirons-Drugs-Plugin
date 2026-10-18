@@ -175,11 +175,15 @@ public final class CartelEnforcer implements Listener {
     }
 
     private Location findSpawn(Player player) {
-        Location origin = player.getLocation();
-        World world = player.getWorld();
-        ThreadLocalRandom random = ThreadLocalRandom.current();
         int minRadius = seconds("spawn-min-distance", 8, 4, 24);
         int maxRadius = Math.max(minRadius, seconds("spawn-max-distance", 12, 4, 32));
+        return findSafeLocation(player.getLocation(), minRadius, maxRadius);
+    }
+
+    static Location findSafeLocation(Location origin, double minRadius, double maxRadius) {
+        World world = origin.getWorld();
+        if (world == null) return null;
+        ThreadLocalRandom random = ThreadLocalRandom.current();
         for (int attempt = 0; attempt < 24; attempt++) {
             double angle = random.nextDouble(Math.PI * 2);
             double radius = random.nextDouble(minRadius, maxRadius + 1.0);
@@ -196,13 +200,17 @@ public final class CartelEnforcer implements Listener {
                 if (!floor.isSolid() || !safeBlock(floor) || !feet.isPassable()
                         || !head.isPassable() || !safeBlock(feet) || !safeBlock(head)) continue;
                 Location result = new Location(world, x + 0.5, y, z + 0.5);
-                if (world.getWorldBorder().isInside(result)) return result;
+                if (world.getWorldBorder().isInside(result)) {
+                    org.bukkit.util.Vector lookDir = origin.toVector().subtract(result.toVector()).setY(0);
+                    if (lookDir.lengthSquared() > 0.01) result.setDirection(lookDir);
+                    return result;
+                }
             }
         }
         return null;
     }
 
-    private boolean safeBlock(Block block) {
+    static boolean safeBlock(Block block) {
         return !block.isLiquid() && switch (block.getType()) {
             case LAVA, FIRE, SOUL_FIRE, MAGMA_BLOCK, CAMPFIRE, SOUL_CAMPFIRE,
                     CACTUS, SWEET_BERRY_BUSH, POWDER_SNOW, WITHER_ROSE,
@@ -218,10 +226,13 @@ public final class CartelEnforcer implements Listener {
         for (UUID id : new ArrayList<>(encounters.keySet())) {
             Encounter encounter = encounters.get(id);
             Player player = Bukkit.getPlayer(id);
-            if (player == null || !eligible(player) || !encounter.npc.valid()
-                    || player.getWorld() != encounter.npc.entity().getWorld()
-                    || player.getLocation().distanceSquared(encounter.npc.entity().getLocation()) > 4096) {
+            if (player == null || !eligible(player) || !encounter.npc.valid()) {
                 finish(id);
+                continue;
+            }
+            if (player.getWorld() != encounter.npc.entity().getWorld()
+                    || player.getLocation().distanceSquared(encounter.npc.entity().getLocation()) > 4096) {
+                encounter.npc.teleportCloser(player);
                 continue;
             }
             if (!economyAvailable) {
@@ -367,18 +378,37 @@ public final class CartelEnforcer implements Listener {
     }
     @EventHandler public void onQuit(PlayerQuitEvent event) { finish(event.getPlayer().getUniqueId()); }
     @EventHandler public void onDeath(PlayerDeathEvent event) { finish(event.getEntity().getUniqueId()); }
-    @EventHandler public void onWorldChange(PlayerChangedWorldEvent event) { finish(event.getPlayer().getUniqueId()); }
+    @EventHandler public void onWorldChange(PlayerChangedWorldEvent event) { followPlayer(event.getPlayer()); }
     @EventHandler(ignoreCancelled = true) public void onTeleport(PlayerTeleportEvent event) {
-        if (event.getTo() != null && (event.getFrom().getWorld() != event.getTo().getWorld()
-                || event.getFrom().distanceSquared(event.getTo()) > 4096)) finish(event.getPlayer().getUniqueId());
+        if (event.getTo() != null) followPlayer(event.getPlayer());
     }
+
+    private void followPlayer(Player player) {
+        if (player == null) return;
+        Encounter encounter = encounters.get(player.getUniqueId());
+        if (encounter == null || !encounter.npc.valid()) return;
+        plugin.getServer().getScheduler().runTask(plugin, () -> {
+            if (!encounters.containsKey(player.getUniqueId()) || !encounter.npc.valid() || !player.isOnline()) return;
+            encounter.npc.teleportCloser(player);
+        });
+    }
+
     @EventHandler public void onChunkUnload(ChunkUnloadEvent event) {
         for (UUID id : new ArrayList<>(encounters.keySet())) {
-            CartelNpcs.Character npc = encounters.get(id).npc;
+            Encounter encounter = encounters.get(id);
+            if (encounter == null) continue;
+            CartelNpcs.Character npc = encounter.npc;
             if (!npc.valid()) { finish(id); continue; }
             Location location = npc.entity().getLocation();
             if (location.getWorld() == event.getWorld() && (location.getBlockX() >> 4) == event.getChunk().getX()
-                    && (location.getBlockZ() >> 4) == event.getChunk().getZ()) finish(id);
+                    && (location.getBlockZ() >> 4) == event.getChunk().getZ()) {
+                Player player = Bukkit.getPlayer(id);
+                if (player != null && player.isOnline()) {
+                    if (!npc.teleportCloser(player)) finish(id);
+                } else {
+                    finish(id);
+                }
+            }
         }
     }
     @EventHandler public void onChunkLoad(ChunkLoadEvent event) {

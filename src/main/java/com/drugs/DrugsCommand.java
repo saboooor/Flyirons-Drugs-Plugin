@@ -32,6 +32,31 @@ public class DrugsCommand implements CommandExecutor {
             return true;
         }
 
+        if (args[0].equalsIgnoreCase("close")) {
+            return true;
+        }
+
+        // /drugs guide <drug> [page]
+        if (args[0].equalsIgnoreCase("guide")) {
+            if (!(sender instanceof Player player)) {
+                sender.sendMessage(ChatColor.RED + "Only players can view the enforcer guide.");
+                return true;
+            }
+            if (args.length < 2 || args[1].equalsIgnoreCase("close")) {
+                return true;
+            }
+            String drug = args[1];
+            EnforcerGuide.Page page = EnforcerGuide.Page.DIALOGUE;
+            if (args.length >= 3) {
+                try {
+                    page = EnforcerGuide.Page.valueOf(args[2].toUpperCase(java.util.Locale.ROOT));
+                } catch (IllegalArgumentException ignored) {
+                }
+            }
+            EnforcerGuide.openPage(DrugsV2.getInstance(), player, drug, page);
+            return true;
+        }
+
         if (args[0].equalsIgnoreCase("status")) {
             if (args.length != 1) {
                 sender.sendMessage(ChatColor.RED + "Usage: /drugs status");

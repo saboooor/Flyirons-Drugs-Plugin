@@ -1,13 +1,23 @@
 package com.drugs;
 
-import org.bukkit.*;
+import com.drugs.DialogView.*;
+import io.papermc.paper.registry.data.dialog.DialogInstancesProvider;
+import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.event.ClickEvent;
+import org.bukkit.Bukkit;
+import org.bukkit.Material;
+import org.bukkit.NamespacedKey;
+import org.bukkit.Server;
 import org.bukkit.entity.Player;
 import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.event.inventory.InventoryDragEvent;
 import org.bukkit.inventory.*;
 import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.scheduler.BukkitScheduler;
-import org.junit.jupiter.api.*;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.mockito.MockedConstruction;
 import org.mockito.MockedStatic;
 
@@ -26,13 +36,15 @@ class EnforcerGuideTest {
     private Player player;
     private EnforcerGuide guide;
 
-    @BeforeEach void setup() {
+    @BeforeEach
+    void setup() throws Exception {
         bukkit = mockStatic(Bukkit.class);
         items = mockConstruction(ItemStack.class, (item, context) -> {
             when(item.getItemMeta()).thenReturn(mock(ItemMeta.class));
         });
         plugin = mock(DrugsV2.class);
         when(plugin.getName()).thenReturn("FlyironsDrugs");
+        when(plugin.namespace()).thenReturn("flyironsdrugs");
         var server = mock(Server.class);
         var scheduler = mock(BukkitScheduler.class);
         when(plugin.getServer()).thenReturn(server);
@@ -47,11 +59,18 @@ class EnforcerGuideTest {
                     inventories.add(inventory);
                     return inventory;
                 });
+        var field = DrugsV2.class.getDeclaredField("instance");
+        field.setAccessible(true);
+        field.set(null, plugin);
         player = mock(Player.class);
         guide = new EnforcerGuide(plugin);
     }
 
-    @AfterEach void cleanup() { items.close(); bukkit.close(); }
+    @AfterEach
+    void cleanup() {
+        items.close();
+        bukkit.close();
+    }
 
     private InventoryClickEvent click(Inventory inventory, int slot) {
         InventoryView view = mock(InventoryView.class);
@@ -65,7 +84,8 @@ class EnforcerGuideTest {
         return event;
     }
 
-    @Test void dialogueOpensRecipeGridAndGrowingPage() {
+    @Test
+    void dialogueOpensRecipeGridAndGrowingPage() {
         ShapedRecipe recipe = mock(ShapedRecipe.class);
         ItemStack paper = mock(ItemStack.class);
         when(paper.getType()).thenReturn(Material.PAPER);
@@ -74,24 +94,49 @@ class EnforcerGuideTest {
         when(recipe.getResult()).thenReturn(result);
         when(recipe.getShape()).thenReturn(new String[]{" P ", "   ", "   "});
         when(recipe.getIngredientMap()).thenReturn(Map.of('P', paper));
-        bukkit.when(() -> Bukkit.getRecipe(new NamespacedKey("flyironsdrugs", "joint"))).thenReturn(recipe);
+        bukkit.when(() -> Bukkit.getRecipe(new NamespacedKey(plugin, "joint"))).thenReturn(recipe);
+
+        // 1. Dialogue opens as Paper Dialog
         EnforcerGuide.open(plugin, player, "joint");
-        click(inventories.getFirst(), 29);
-        Inventory preview = inventories.get(1);
-        verify(preview).setItem(11, paper);
-        verify(preview).setItem(24, result);
-        click(preview, 49);
-        assertEquals(3, inventories.size());
-        verify(inventories.get(2)).setItem(eq(10), any(ItemStack.class));
-        click(inventories.get(2), 45);
-        assertEquals(4, inventories.size());
+        ArgumentCaptor<MultiActionDialog> captor = ArgumentCaptor.forClass(MultiActionDialog.class);
+        verify(plugin).showDialog(eq(player), captor.capture());
+
+        MultiActionDialog dialogue = captor.getValue();
+        assertEquals("Cartel enforcer", dialogue.getBase().title().toPlainText());
+        assertTrue(dialogue.getBase().body().getFirst().contents().toPlainText().contains("Enforcer: I need joint"));
+        assertEquals("/drugs guide joint recipe", dialogue.actions().get(0).action().command());
+        assertEquals("/drugs guide joint growing", dialogue.actions().get(1).action().command());
+
+        // 2. Recipe page opens as an Inventory GUI with native items
+        EnforcerGuide.openPage(plugin, player, "joint", EnforcerGuide.Page.RECIPE);
+        assertEquals(1, inventories.size());
+        Inventory recipeGui = inventories.getFirst();
+        verify(recipeGui).setItem(11, paper);
+        verify(recipeGui).setItem(24, result);
+        verify(player).openInventory(recipeGui);
+
+        // 3. Clicking "How to grow" (slot 49) in recipe GUI transitions to GROWING dialog
+        click(recipeGui, 49);
+        verify(player).closeInventory();
+        ArgumentCaptor<MultiActionDialog> growingCaptor = ArgumentCaptor.forClass(MultiActionDialog.class);
+        verify(plugin, times(2)).showDialog(eq(player), growingCaptor.capture());
+        MultiActionDialog growingDialog = growingCaptor.getValue();
+        assertEquals("Growing ingredients", growingDialog.getBase().title().toPlainText());
+        assertTrue(growingDialog.getBase().body().getFirst().contents().toPlainText().contains("using shears"));
+
+        // 4. Clicking "Back to enforcer" (slot 45) transitions to DIALOGUE dialog
+        click(recipeGui, 45);
+        verify(plugin, times(3)).showDialog(eq(player), any(MultiActionDialog.class));
+
+        // 5. Clicking close (slot 53) closes inventory
+        click(recipeGui, 53);
     }
 
-    @Test void bottomInventoryClicksAndDragsCannotTakePreviewItems() {
-        EnforcerGuide.open(plugin, player, "joint");
+    @Test
+    void bottomInventoryClicksAndDragsCannotTakePreviewItems() {
+        EnforcerGuide.openPage(plugin, player, "joint", EnforcerGuide.Page.RECIPE);
         Inventory inventory = inventories.getFirst();
         click(inventory, 60);
-        assertEquals(1, inventories.size());
         InventoryView view = mock(InventoryView.class);
         when(view.getTopInventory()).thenReturn(inventory);
         InventoryDragEvent drag = mock(InventoryDragEvent.class);
@@ -100,7 +145,32 @@ class EnforcerGuideTest {
         verify(drag).setCancelled(true);
     }
 
-    @Test void growingInstructionsUseConfiguredCropAndCannabisMechanics() {
+    @Test
+    void dialogPropertiesAndPaperConversion() {
+        MultiActionDialog dialogue = EnforcerGuide.createDialog("joint", EnforcerGuide.Page.DIALOGUE);
+        assertTrue(dialogue.getBase().canCloseWithEscape());
+        assertEquals(1, dialogue.columns());
+        assertEquals(300, dialogue.actions().getFirst().width());
+
+        var provider = mock(DialogInstancesProvider.class);
+        var baseBuilder = mock(io.papermc.paper.registry.data.dialog.DialogBase.Builder.class, RETURNS_SELF);
+        var buttonBuilder = mock(io.papermc.paper.registry.data.dialog.ActionButton.Builder.class, RETURNS_SELF);
+        when(provider.dialogBaseBuilder(any())).thenReturn(baseBuilder);
+        when(provider.actionButtonBuilder(any())).thenReturn(buttonBuilder);
+
+        try (var factory = mockStatic(DialogInstancesProvider.class)) {
+            factory.when(DialogInstancesProvider::instance).thenReturn(provider);
+            DialogView.paperBase(dialogue);
+            DialogView.button(dialogue.actions().getFirst());
+            verify(provider).dialogBaseBuilder(Component.text("Cartel enforcer"));
+            verify(baseBuilder).canCloseWithEscape(true);
+            verify(provider).staticAction(ClickEvent.runCommand("/drugs guide joint recipe"));
+            verify(buttonBuilder).width(300);
+        }
+    }
+
+    @Test
+    void growingInstructionsUseConfiguredCropAndCannabisMechanics() {
         try (MockedStatic<DrugGrowing> growing = mockStatic(DrugGrowing.class)) {
             growing.when(() -> DrugGrowing.crop("coca")).thenReturn(
                     new DrugGrowing.Crop("coca", "Coca Leaves", Material.VINE, Material.VINE, 123));
@@ -110,5 +180,16 @@ class EnforcerGuideTest {
             assertTrue(instructions.contains("light at least 9"));
         }
         assertTrue(String.join(" ", EnforcerGuide.growingSteps("cannabis")).contains("using shears"));
+    }
+
+    @Test
+    void drugsCommandDispatchesGuideSubcommands() {
+        DrugsCommand command = new DrugsCommand();
+        assertTrue(command.onCommand(player, mock(org.bukkit.command.Command.class), "drugs", new String[]{"close"}));
+        assertTrue(command.onCommand(player, mock(org.bukkit.command.Command.class), "drugs", new String[]{"guide", "close"}));
+        assertTrue(command.onCommand(player, mock(org.bukkit.command.Command.class), "drugs", new String[]{"guide", "joint", "growing"}));
+        verify(plugin).showDialog(eq(player), any(MultiActionDialog.class));
+        assertTrue(command.onCommand(player, mock(org.bukkit.command.Command.class), "drugs", new String[]{"guide", "joint", "recipe"}));
+        assertEquals(1, inventories.size());
     }
 }

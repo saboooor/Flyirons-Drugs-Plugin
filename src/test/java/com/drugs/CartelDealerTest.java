@@ -28,6 +28,7 @@ class CartelDealerTest {
     void setup() throws Exception {
         plugin = mock(DrugsV2.class);
         when(plugin.getName()).thenReturn("DrugsV2");
+        when(plugin.namespace()).thenReturn("drugsv2");
         when(plugin.getDataFolder()).thenReturn(directory.toFile());
         when(plugin.getLogger()).thenReturn(Logger.getAnonymousLogger());
         var instance = DrugsV2.class.getDeclaredField("instance");

@@ -1,5 +1,6 @@
 package com.drugs;
 
+import com.drugs.DialogView.*;
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
@@ -9,78 +10,115 @@ import org.bukkit.event.Listener;
 import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.event.inventory.InventoryDragEvent;
 import org.bukkit.inventory.*;
+import org.bukkit.inventory.meta.ItemMeta;
 
 import java.util.List;
+import java.util.Map;
 
-/** Read-only dialogue and recipe pages, identified by holder rather than inventory title. */
-final class EnforcerGuide implements Listener {
-    enum Page { DIALOGUE, RECIPE, GROWING }
-    private static final class Menu implements InventoryHolder {
+/** Read-only dialogue and recipe pages: dialogs for dialogue/growing, inventory GUI for recipe preview. */
+public final class EnforcerGuide implements Listener {
+    public enum Page { DIALOGUE, RECIPE, GROWING }
+
+    static final class RecipeMenu implements InventoryHolder {
         final String drug;
-        final Page page;
         final Inventory inventory;
-        Menu(String drug, Page page) {
-            this.drug = drug;
-            this.page = page;
-            inventory = Bukkit.createInventory(this, 54, switch (page) {
-                case DIALOGUE -> "Cartel enforcer";
-                case RECIPE -> "Crafting: " + drug;
-                case GROWING -> "Growing ingredients";
-            });
-        }
-        @Override public Inventory getInventory() { return inventory; }
-    }
-    private final DrugsV2 plugin;
-    EnforcerGuide(DrugsV2 plugin) { this.plugin = plugin; }
 
-    static void open(DrugsV2 plugin, Player player, String drug) {
+        RecipeMenu(String drug) {
+            this.drug = drug;
+            this.inventory = Bukkit.createInventory(this, 54, "Crafting: " + drug);
+        }
+
+        @Override
+        public Inventory getInventory() {
+            return inventory;
+        }
+    }
+
+    private final DrugsV2 plugin;
+    public EnforcerGuide(DrugsV2 plugin) { this.plugin = plugin; }
+
+    public static void open(DrugsV2 plugin, Player player, String drug) {
         openPage(plugin, player, drug, Page.DIALOGUE);
     }
 
-    private static void openPage(DrugsV2 plugin, Player player, String drug, Page page) {
-        Menu menu = new Menu(drug, page);
-        Inventory inventory = menu.inventory;
-        if (page == Page.DIALOGUE) {
-            inventory.setItem(13, icon(Material.PAPER, "§6Enforcer: I need " + drug,
-                    "§7Throw the goods near me to deliver them.",
-                    "§7Need help? Choose a guide below.",
-                    "§eYour delivery deadline keeps running."));
-            inventory.setItem(29, icon(Material.CRAFTING_TABLE, "§aCrafting recipe", "§7View the crafting grid for " + drug + "."));
-            inventory.setItem(33, icon(Material.WHEAT_SEEDS, "§aHow to grow", "§7Learn how to grow the required ingredient."));
-        } else if (page == Page.RECIPE) {
-            Recipe recipe = Bukkit.getRecipe(new NamespacedKey(plugin, drug));
-            if (recipe instanceof ShapedRecipe shaped) {
-                String crop = DrugGrowing.requirement(drug);
-                String[] shape = shaped.getShape();
-                var ingredients = shaped.getIngredientMap();
-                for (int row = 0; row < shape.length; row++) {
-                    for (int column = 0; column < shape[row].length(); column++) {
-                        ItemStack ingredient = ingredients.get(shape[row].charAt(column));
-                        if (ingredient != null && crop != null && DrugGrowing.material(crop) == ingredient.getType()) {
-                            ingredient = DrugGrowing.harvest(crop, null);
-                        }
-                        inventory.setItem(10 + row * 9 + column, ingredient);
-                    }
-                }
-                inventory.setItem(24, shaped.getResult().clone());
-                inventory.setItem(16, icon(Material.CRAFTING_TABLE, "§eRecipe preview", "§7Copy the grid into a crafting table."));
-            } else {
-                inventory.setItem(22, icon(Material.BARRIER, "§cNo crafting recipe available"));
-            }
-            inventory.setItem(49, icon(Material.WHEAT_SEEDS, "§aHow to grow the ingredient"));
+    public static void openPage(DrugsV2 plugin, Player player, String drug, Page page) {
+        if (page == Page.RECIPE) {
+            openRecipeInventory(plugin, player, drug);
         } else {
-            List<String> instructions = growingSteps(DrugGrowing.requirement(drug));
-            for (int i = 0; i < instructions.size(); i++) {
-                inventory.setItem(10 + i, icon(Material.PAPER, "§eStep " + (i + 1), "§7" + instructions.get(i)));
-            }
-            inventory.setItem(49, icon(Material.CRAFTING_TABLE, "§aCrafting recipe"));
+            MultiActionDialog dialog = createDialog(drug, page);
+            plugin.showDialog(player, dialog);
         }
-        if (page != Page.DIALOGUE) inventory.setItem(45, icon(Material.ARROW, "§eBack to enforcer"));
+    }
+
+    public static MultiActionDialog createDialog(String drug, Page page) {
+        return switch (page) {
+            case DIALOGUE -> dialogueDialog(drug);
+            case GROWING -> growingDialog(drug);
+            case RECIPE -> throw new IllegalArgumentException("Recipe page uses an inventory GUI");
+        };
+    }
+
+    private static MultiActionDialog dialogueDialog(String drug) {
+        String message = "Enforcer: I need " + drug + ".\n"
+                + "Throw the goods near me to deliver them.\n"
+                + "Need help? Choose a guide below.\n"
+                + "Your delivery deadline keeps running.";
+        DialogBase base = Dialogs.base("Cartel enforcer", message);
+        List<ActionButton> actions = List.of(
+                Dialogs.button("Crafting recipe", "/drugs guide " + drug + " recipe", false, Icon.CRAFTING_TABLE, "View the crafting recipe for " + drug + "."),
+                Dialogs.button("How to grow", "/drugs guide " + drug + " growing", false, Icon.SEEDS, "Learn how to grow the required ingredient.")
+        );
+        return Dialogs.menu(base, actions, Dialogs.button("Close", "/drugs guide close", false, Icon.CLOSE, "Close this guide."));
+    }
+
+    private static MultiActionDialog growingDialog(String drug) {
+        String crop = DrugGrowing.requirement(drug);
+        List<String> instructions = growingSteps(crop);
+        StringBuilder sb = new StringBuilder();
+        if (crop != null) {
+            sb.append("Growing guide for ").append(crop).append(":\n\n");
+        }
+        for (int i = 0; i < instructions.size(); i++) {
+            sb.append(i + 1).append(". ").append(instructions.get(i)).append("\n");
+        }
+
+        DialogBase base = Dialogs.base("Growing ingredients", sb.toString());
+        List<ActionButton> actions = List.of(
+                Dialogs.button("Crafting recipe", "/drugs guide " + drug + " recipe", false, Icon.CRAFTING_TABLE, "View the crafting recipe for " + drug + "."),
+                Dialogs.button("Back to enforcer", "/drugs guide " + drug + " dialogue", false, Icon.ARROW, "Return to cartel enforcer instructions.")
+        );
+        return Dialogs.menu(base, actions, Dialogs.button("Close", "/drugs guide close", false, Icon.CLOSE, "Close this guide."));
+    }
+
+    private static void openRecipeInventory(DrugsV2 plugin, Player player, String drug) {
+        RecipeMenu menu = new RecipeMenu(drug);
+        Inventory inventory = menu.inventory;
+        Recipe recipe = Bukkit.getRecipe(new NamespacedKey(plugin, drug));
+        if (recipe instanceof ShapedRecipe shaped) {
+            String crop = DrugGrowing.requirement(drug);
+            String[] shape = shaped.getShape();
+            Map<Character, ItemStack> ingredients = shaped.getIngredientMap();
+            for (int row = 0; row < shape.length; row++) {
+                for (int column = 0; column < shape[row].length(); column++) {
+                    ItemStack ingredient = ingredients.get(shape[row].charAt(column));
+                    if (ingredient != null && crop != null && DrugGrowing.material(crop) == ingredient.getType()) {
+                        ingredient = DrugGrowing.harvest(crop, null);
+                    }
+                    inventory.setItem(10 + row * 9 + column, ingredient);
+                }
+            }
+            inventory.setItem(24, shaped.getResult().clone());
+            inventory.setItem(16, icon(Material.CRAFTING_TABLE, "§eRecipe preview", "§7Copy the grid into a crafting table."));
+        } else {
+            inventory.setItem(22, icon(Material.BARRIER, "§cNo crafting recipe available"));
+        }
+        inventory.setItem(45, icon(Material.ARROW, "§eBack to enforcer"));
+        inventory.setItem(49, icon(Material.WHEAT_SEEDS, "§aHow to grow the ingredient"));
         inventory.setItem(53, icon(Material.BARRIER, "§cClose"));
         player.openInventory(inventory);
     }
 
-    static List<String> growingSteps(String crop) {
+    public static List<String> growingSteps(String crop) {
         if (crop == null) return List.of("This recipe does not require a grown ingredient.");
         if (crop.equals("cannabis")) return List.of(
                 "Place a fern or cannabis plant on suitable soil.",
@@ -104,34 +142,45 @@ final class EnforcerGuide implements Listener {
 
     private static ItemStack icon(Material material, String name, String... lore) {
         ItemStack item = new ItemStack(material);
-        var meta = item.getItemMeta();
-        meta.setDisplayName(name);
-        meta.setLore(List.of(lore));
-        item.setItemMeta(meta);
+        ItemMeta meta = item.getItemMeta();
+        if (meta != null) {
+            meta.setDisplayName(name);
+            meta.setLore(List.of(lore));
+            item.setItemMeta(meta);
+        }
         return item;
     }
 
-    @EventHandler public void click(InventoryClickEvent event) {
-        if (!(event.getView().getTopInventory().getHolder() instanceof Menu menu)) return;
+    @EventHandler
+    public void click(InventoryClickEvent event) {
+        if (!(event.getView().getTopInventory().getHolder() instanceof RecipeMenu menu)) return;
         event.setCancelled(true);
         if (!(event.getWhoClicked() instanceof Player player) || event.getRawSlot() < 0
                 || event.getRawSlot() >= menu.inventory.getSize()) return;
         int slot = event.getRawSlot();
-        Page next = null;
         if (slot == 53) {
             plugin.getServer().getScheduler().runTask(plugin, () -> player.closeInventory());
             return;
         }
-        if (slot == 45 && menu.page != Page.DIALOGUE) next = Page.DIALOGUE;
-        if (menu.page == Page.DIALOGUE && slot == 29 || menu.page == Page.GROWING && slot == 49) next = Page.RECIPE;
-        if (menu.page == Page.DIALOGUE && slot == 33 || menu.page == Page.RECIPE && slot == 49) next = Page.GROWING;
-        if (next != null) {
-            Page destination = next;
-            plugin.getServer().getScheduler().runTask(plugin, () -> openPage(plugin, player, menu.drug, destination));
+        if (slot == 45) {
+            plugin.getServer().getScheduler().runTask(plugin, () -> {
+                player.closeInventory();
+                openPage(plugin, player, menu.drug, Page.DIALOGUE);
+            });
+            return;
+        }
+        if (slot == 49) {
+            plugin.getServer().getScheduler().runTask(plugin, () -> {
+                player.closeInventory();
+                openPage(plugin, player, menu.drug, Page.GROWING);
+            });
         }
     }
 
-    @EventHandler public void drag(InventoryDragEvent event) {
-        if (event.getView().getTopInventory().getHolder() instanceof Menu) event.setCancelled(true);
+    @EventHandler
+    public void drag(InventoryDragEvent event) {
+        if (event.getView().getTopInventory().getHolder() instanceof RecipeMenu) {
+            event.setCancelled(true);
+        }
     }
 }

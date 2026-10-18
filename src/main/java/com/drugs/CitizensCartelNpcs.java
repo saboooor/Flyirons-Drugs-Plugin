@@ -2,6 +2,7 @@ package com.drugs;
 
 import net.citizensnpcs.api.CitizensAPI;
 import net.citizensnpcs.api.ai.Navigator;
+import net.citizensnpcs.api.astar.pathfinder.DoorExaminer;
 import net.citizensnpcs.api.event.CitizensEnableEvent;
 import net.citizensnpcs.api.event.NPCRightClickEvent;
 import net.citizensnpcs.api.event.NPCLeftClickEvent;
@@ -171,6 +172,8 @@ final class CitizensCartelNpcs implements CartelNpcs, Listener {
         private Player climbingTarget;
         private boolean climbing;
         private int retryTicks;
+        private int stuckTicks;
+        private Location lastLocation;
         private Location previousTargetLocation;
         private final EnforcerWallClimber climber = new EnforcerWallClimber();
         private final NPC npc;
@@ -188,6 +191,25 @@ final class CitizensCartelNpcs implements CartelNpcs, Listener {
                         return;
                     }
                     Location targetLocation = climbingTarget.getLocation();
+                    Location here = entity().getLocation();
+                    double distSq = here.getWorld().equals(targetLocation.getWorld())
+                            ? here.distanceSquared(targetLocation) : Double.MAX_VALUE;
+                    if (distSq > 6.25) {
+                        if (lastLocation != null && lastLocation.getWorld().equals(here.getWorld())
+                                && here.distanceSquared(lastLocation) < 0.09) {
+                            if (++stuckTicks >= 50) {
+                                stuckTicks = 0;
+                                teleportCloser(climbingTarget);
+                                return;
+                            }
+                        } else {
+                            stuckTicks = 0;
+                            lastLocation = here.clone();
+                        }
+                    } else {
+                        stuckTicks = 0;
+                        lastLocation = here.clone();
+                    }
                     boolean sprinting = !climbing && runningAway(entity().getLocation(), previousTargetLocation,
                             targetLocation, climbingTarget.isSprinting());
                     previousTargetLocation = targetLocation;
@@ -196,6 +218,13 @@ final class CitizensCartelNpcs implements CartelNpcs, Listener {
                     chase.getDefaultParameters().speedModifier(speed);
                     if (chase.isNavigating()) chase.getLocalParameters().speedModifier(speed);
                     if (entity() instanceof Player body) body.setSprinting(sprinting);
+                    boolean openDoors = dealer.settings().getBoolean("enforcer.open-doors", true);
+                    if (openDoors && entity() instanceof LivingEntity living) {
+                        boolean opened = climber.openDoorsInWay(living, climbingTarget);
+                        if (opened && !chase.isNavigating()) {
+                            chase.setTarget(climbingTarget, false);
+                        }
+                    }
                     int height = Math.max(1, Math.min(16,
                             dealer.settings().getInt("enforcer.wall-climbing.max-height", 6)));
                     int timeout = Math.max(20, Math.min(400,
@@ -221,18 +250,82 @@ final class CitizensCartelNpcs implements CartelNpcs, Listener {
                     && navigator.getEntityTarget().getTarget().equals(player)) return true;
             navigator.getDefaultParameters().range(64).speedModifier(1.15F).distanceMargin(2)
                     .useNewPathfinder(true).updatePathRate(10).stationaryTicks(20)
-                    .stuckAction((ignoredNpc, ignoredNavigator) -> false);
+                    .stuckAction((stuckNpc, stuckNavigator) -> {
+                        Player target = climbingTarget != null ? climbingTarget : player;
+                        if (target != null && target.isOnline()) {
+                            return teleportCloser(target);
+                        }
+                        return false;
+                    });
+            if (dealer.settings().getBoolean("enforcer.open-doors", true)) {
+                try {
+                    if (!navigator.getDefaultParameters().hasExaminer(DoorExaminer.class)) {
+                        navigator.getDefaultParameters().examiner(new DoorExaminer());
+                    }
+                } catch (Throwable ignored) {
+                }
+            }
             // A preliminary canNavigateTo check can reject a freshly spawned NPC.
             // Let navigation run; the encounter's approach timeout handles unreachable players.
             navigator.setTarget(player, false);
             return true;
         }
+
+        @Override public boolean teleportCloser(Player player) {
+            if (!valid() || player == null || !player.isOnline()) return false;
+            Location origin = player.getLocation();
+            Location safe = CartelEnforcer.findSafeLocation(origin, 4, 8);
+            if (safe == null) safe = CartelEnforcer.findSafeLocation(origin, 2, 5);
+            if (safe == null) safe = origin.clone();
+            Location old = entity() != null ? entity().getLocation() : null;
+            if (old != null && old.getWorld() != null) {
+                try {
+                    old.getWorld().playSound(old, Sound.ENTITY_ENDERMAN_TELEPORT, 1.0f, 1.0f);
+                } catch (Throwable ignored) {}
+            }
+            npc.teleport(safe, org.bukkit.event.player.PlayerTeleportEvent.TeleportCause.PLUGIN);
+            if (entity() != null) {
+                entity().setVelocity(new org.bukkit.util.Vector());
+                entity().setFallDistance(0);
+            }
+            if (safe != null && safe.getWorld() != null) {
+                try {
+                    safe.getWorld().playSound(safe, Sound.ENTITY_ENDERMAN_TELEPORT, 1.0f, 1.0f);
+                } catch (Throwable ignored) {}
+            }
+            climber.reset();
+            stuckTicks = 0;
+            lastLocation = safe.clone();
+            if (climbingTask != null) {
+                npc.getNavigator().cancelNavigation();
+                npc.getNavigator().setTarget(player, false);
+            } else {
+                approach(player);
+            }
+            return true;
+        }
+
+        @Override public boolean teleport(Location location) {
+            if (!valid() || location == null) return false;
+            npc.teleport(location, org.bukkit.event.player.PlayerTeleportEvent.TeleportCause.PLUGIN);
+            if (entity() != null) {
+                entity().setVelocity(new org.bukkit.util.Vector());
+                entity().setFallDistance(0);
+            }
+            climber.reset();
+            stuckTicks = 0;
+            lastLocation = location.clone();
+            return true;
+        }
+
         public void stop() {
             if (climbingTask != null) climbingTask.cancel();
             climbingTask = null;
             climber.reset();
             climbing = false;
             retryTicks = 0;
+            stuckTicks = 0;
+            lastLocation = null;
             if (valid() && entity() instanceof Player body) body.setSprinting(false);
             previousTargetLocation = null;
             npc.getNavigator().cancelNavigation();

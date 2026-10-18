@@ -44,6 +44,15 @@ class CartelEnforcerTest {
         registry.when(() -> DrugRegistry.isDrugRegistered("joint")).thenReturn(true);
         DrugsV2 plugin = mock(DrugsV2.class);
         when(plugin.getName()).thenReturn("DrugsV2");
+        when(plugin.namespace()).thenReturn("drugsv2");
+        Server server = mock(Server.class);
+        org.bukkit.scheduler.BukkitScheduler scheduler = mock(org.bukkit.scheduler.BukkitScheduler.class);
+        when(plugin.getServer()).thenReturn(server);
+        when(server.getScheduler()).thenReturn(scheduler);
+        when(scheduler.runTask(eq(plugin), any(Runnable.class))).thenAnswer(call -> {
+            ((Runnable) call.getArgument(1)).run();
+            return null;
+        });
         dealer = mock(CartelDealer.class);
         config = new YamlConfiguration();
         config.set("enforcer.enabled", false);
@@ -385,4 +394,35 @@ class CartelEnforcerTest {
         verify(player).sendMessage(contains("No registered drugs have a positive, finite base price"));
     }
 
+    @Test void onTeleportTeleportsEnforcerWithPlayer() {
+        spawnAndApproach();
+        Location from = player.getLocation();
+        Location to = new Location(world, 1000, 64, 1000);
+        org.bukkit.event.player.PlayerTeleportEvent event = mock(org.bukkit.event.player.PlayerTeleportEvent.class);
+        when(event.getPlayer()).thenReturn(player);
+        when(event.getFrom()).thenReturn(from);
+        when(event.getTo()).thenReturn(to);
+
+        enforcer.onTeleport(event);
+        verify(character, never()).destroy();
+        verify(character).teleportCloser(player);
+    }
+
+    @Test void onWorldChangeTeleportsEnforcerWithPlayer() {
+        spawnAndApproach();
+        org.bukkit.event.player.PlayerChangedWorldEvent event = mock(org.bukkit.event.player.PlayerChangedWorldEvent.class);
+        when(event.getPlayer()).thenReturn(player);
+
+        enforcer.onWorldChange(event);
+        verify(character, never()).destroy();
+        verify(character).teleportCloser(player);
+    }
+
+    @Test void tickTeleportsEnforcerCloserIfPlayerIsTooFar() {
+        spawnAndApproach();
+        when(player.getLocation()).thenReturn(new Location(world, 500, 64, 500));
+        enforcer.tick();
+        verify(character, never()).destroy();
+        verify(character).teleportCloser(player);
+    }
 }

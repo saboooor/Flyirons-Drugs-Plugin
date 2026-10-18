@@ -14,6 +14,7 @@ class HarvestCraftingListenerTest {
     @BeforeEach void setup() throws Exception {
         DrugsV2 plugin = mock(DrugsV2.class);
         when(plugin.getName()).thenReturn("DrugsV2");
+        when(plugin.namespace()).thenReturn("drugsv2");
         var field = DrugsV2.class.getDeclaredField("instance");
         field.setAccessible(true);
         field.set(null, plugin);

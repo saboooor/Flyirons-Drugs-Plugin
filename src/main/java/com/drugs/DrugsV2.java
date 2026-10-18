@@ -35,6 +35,7 @@ public class DrugsV2 extends JavaPlugin {
     private CartelEnforcer cartelEnforcer;
     private CartelNpcs cartelNpcs;
     private CartelDroppedSales cartelDroppedSales;
+    private BedrockForms bedrockForms;
 
     public static DrugsV2 getInstance() {
         return instance;
@@ -159,6 +160,27 @@ public class DrugsV2 extends JavaPlugin {
             placeholderExpansion = new DrugsPlaceholderExpansion(this);
             placeholderExpansion.register();
         }
+        bedrockForms = new BedrockForms(this);
+        bedrockForms.refresh();
+    }
+
+    public void showDialog(org.bukkit.entity.Player player, DialogView.MultiActionDialog dialog) {
+        if (bedrockForms != null && bedrockForms.isBedrock(player)) {
+            bedrockForms.show(player, dialog);
+        } else {
+            player.showDialog(DialogView.paper(dialog));
+        }
+    }
+
+    public void executeUiCommand(org.bukkit.entity.Player player, String command) {
+        String cmd = command.startsWith("/") ? command.substring(1) : command;
+        player.performCommand(cmd);
+    }
+
+    @Override
+    public String namespace() {
+        String name = getName();
+        return name != null ? name.toLowerCase(java.util.Locale.ROOT) : "flyironsdrugs";
     }
 
     @Override

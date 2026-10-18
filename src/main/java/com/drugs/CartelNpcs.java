@@ -13,6 +13,8 @@ interface CartelNpcs {
         boolean approach(Player player);
         void stop();
         void destroy();
+        default boolean teleport(Location location) { return false; }
+        default boolean teleportCloser(Player player) { return false; }
     }
 
     default String unavailableReason() { return null; }

@@ -44,6 +44,7 @@ class CitizensCartelNpcsTest {
     private YamlConfiguration config;
     private PluginManager plugins;
     private Location location;
+    private World world;
 
     @BeforeEach void setup() {
         citizens = mockStatic(CitizensAPI.class);
@@ -51,6 +52,7 @@ class CitizensCartelNpcsTest {
         bukkit.when(Bukkit::getWorlds).thenReturn(List.of());
         plugin = mock(DrugsV2.class);
         when(plugin.getName()).thenReturn("FlyironsDrugs");
+        when(plugin.namespace()).thenReturn("flyironsdrugs");
         when(plugin.getLogger()).thenReturn(Logger.getAnonymousLogger());
         Server server = mock(Server.class);
         when(plugin.getServer()).thenReturn(server);
@@ -79,7 +81,9 @@ class CitizensCartelNpcsTest {
         when(npc.getOwningRegistry()).thenReturn(persistent);
         when(persistent.createNPC(eq(EntityType.PLAYER), anyString())).thenReturn(npc);
         when(temporary.createNPC(eq(EntityType.PLAYER), anyString())).thenReturn(npc);
-        location = new Location(mock(World.class), 1, 64, 1);
+        world = mock(World.class);
+        location = new Location(world, 1, 64, 1);
+        when(entity.getLocation()).thenReturn(location);
         service = new CitizensCartelNpcs(plugin, dealer);
     }
 
@@ -185,20 +189,29 @@ class CitizensCartelNpcsTest {
         verify(dealer, never()).interact(any(), any());
     }
 
-    @Test void enforcersNavigateWithCitizensAndDoNotTeleportWhenStuck() {
+    @Test void enforcersNavigateWithCitizensAndTeleportWhenStuck() {
         Navigator navigator = mock(Navigator.class);
         NavigatorParameters parameters = mock(NavigatorParameters.class, RETURNS_SELF);
         when(npc.getNavigator()).thenReturn(navigator);
         when(navigator.getDefaultParameters()).thenReturn(parameters);
         Player target = mock(Player.class);
         when(target.getLocation()).thenReturn(location);
+        when(target.isOnline()).thenReturn(true);
         when(navigator.canNavigateTo(location)).thenReturn(true);
+        when(metadata.get(CitizensCartelNpcs.ROLE, "")).thenReturn("enforcer");
         CartelNpcs.Character enforcer = service.create(location, "enforcer");
         assertTrue(enforcer.approach(target));
         verify(navigator).setTarget(target, false);
-        verify(parameters).stuckAction(any());
+        ArgumentCaptor<net.citizensnpcs.api.ai.StuckAction> stuck = ArgumentCaptor.forClass(net.citizensnpcs.api.ai.StuckAction.class);
+        verify(parameters).stuckAction(stuck.capture());
         verify(parameters).useNewPathfinder(true);
         verify(parameters).updatePathRate(10);
+        verify(parameters).examiner(any(net.citizensnpcs.api.astar.pathfinder.DoorExaminer.class));
+
+        // When stuckAction fires, enforcer teleports closer to target
+        assertTrue(stuck.getValue().run(npc, navigator));
+        verify(npc).teleport(any(Location.class), eq(org.bukkit.event.player.PlayerTeleportEvent.TeleportCause.PLUGIN));
+
         enforcer.stop();
         verify(navigator).cancelNavigation();
         // Navigation is attempted even if a preliminary path check would return false.
