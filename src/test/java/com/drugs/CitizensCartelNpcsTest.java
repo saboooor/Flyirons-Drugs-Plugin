@@ -52,7 +52,7 @@ class CitizensCartelNpcsTest {
         bukkit.when(Bukkit::getWorlds).thenReturn(List.of());
         plugin = mock(DrugsV2.class);
         when(plugin.getName()).thenReturn("LumiDrugs");
-        when(plugin.namespace()).thenReturn("LumiDrugs");
+        when(plugin.namespace()).thenReturn("lumidrugs");
         when(plugin.getLogger()).thenReturn(Logger.getAnonymousLogger());
         Server server = mock(Server.class);
         when(plugin.getServer()).thenReturn(server);

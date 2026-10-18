@@ -26,7 +26,7 @@ public final class NativeAdvancements implements Listener {
     private static final Map<UUID, Set<String>> pendingDrugs = new HashMap<>();
 
     private static NamespacedKey key(String id) {
-        return new NamespacedKey("LumiDrugs", "achievements/" + id);
+        return new NamespacedKey("lumidrugs", "achievements/" + id);
     }
 
     public static void reload() {

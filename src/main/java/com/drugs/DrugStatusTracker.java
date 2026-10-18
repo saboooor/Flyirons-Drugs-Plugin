@@ -33,7 +33,7 @@ public final class DrugStatusTracker implements Listener {
     private static final String PREFIX = "drug_status/";
 
     private static NamespacedKey key(PotionEffectType type) {
-        return new NamespacedKey("LumiDrugs", PREFIX + type.getKey().getNamespace() + "/" + type.getKey().getKey());
+        return new NamespacedKey("lumidrugs", PREFIX + type.getKey().getNamespace() + "/" + type.getKey().getKey());
     }
 
     public static void applyEffect(Player player, String drugId, PotionEffect effect) {
@@ -103,7 +103,7 @@ public final class DrugStatusTracker implements Listener {
     }
 
     private static boolean isStatusKey(NamespacedKey key) {
-        return key.getNamespace().equals("LumiDrugs") && key.getKey().startsWith(PREFIX);
+        return key.getNamespace().equals("lumidrugs") && key.getKey().startsWith(PREFIX);
     }
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)

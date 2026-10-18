@@ -18,7 +18,7 @@ class NativeAdvancementsTest {
             Player player = mock(Player.class);
             Advancement advancement = mock(Advancement.class);
             AdvancementProgress progress = mock(AdvancementProgress.class);
-            bukkit.when(() -> Bukkit.getAdvancement(new NamespacedKey("LumiDrugs", "achievements/first-dose")))
+            bukkit.when(() -> Bukkit.getAdvancement(new NamespacedKey("lumidrugs", "achievements/first-dose")))
                     .thenReturn(advancement);
             when(player.getAdvancementProgress(advancement)).thenReturn(progress);
             when(progress.getRemainingCriteria()).thenReturn(List.of("unlock"));
@@ -36,7 +36,7 @@ class NativeAdvancementsTest {
             Player player = mock(Player.class);
             Advancement advancement = mock(Advancement.class);
             AdvancementProgress progress = mock(AdvancementProgress.class);
-            bukkit.when(() -> Bukkit.getAdvancement(new NamespacedKey("LumiDrugs", "achievements/first-dose")))
+            bukkit.when(() -> Bukkit.getAdvancement(new NamespacedKey("lumidrugs", "achievements/first-dose")))
                     .thenReturn(advancement);
             when(player.getAdvancementProgress(advancement)).thenReturn(progress);
             when(progress.isDone()).thenReturn(false, true);

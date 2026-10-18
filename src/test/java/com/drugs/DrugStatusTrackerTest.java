@@ -18,7 +18,7 @@ class DrugStatusTrackerTest {
     private Player player;
     private PersistentDataContainer data;
     private final Map<NamespacedKey, String> stored = new HashMap<>();
-    private final NamespacedKey statusKey = new NamespacedKey("LumiDrugs", "drug_status/minecraft/speed");
+    private final NamespacedKey statusKey = new NamespacedKey("lumidrugs", "drug_status/minecraft/speed");
 
     @BeforeEach void setup() throws Exception {
         var field = DrugsV2.class.getDeclaredField("instance");
@@ -37,7 +37,7 @@ class DrugStatusTrackerTest {
     }
 
     @Test void untrackedWeaknessIsVisibleWithDurationWithoutInventingDrugSource() {
-        NamespacedKey weaknessKey = new NamespacedKey("LumiDrugs", "drug_status/minecraft/weakness");
+        NamespacedKey weaknessKey = new NamespacedKey("lumidrugs", "drug_status/minecraft/weakness");
         var weakness = new DrugStatusTracker.Status(600, 0, List.of("weakness 1"));
         assertEquals(Map.of("effect/minecraft/weakness", weakness),
                 DrugStatusTracker.potionStatus(data, Map.of(weaknessKey, weakness)));
@@ -51,7 +51,7 @@ class DrugStatusTrackerTest {
 
     @Test void trackedAndUntrackedEffectsAppearTogetherWithoutDuplicates() {
         stored.put(statusKey, "cocaine");
-        NamespacedKey weaknessKey = new NamespacedKey("LumiDrugs", "drug_status/minecraft/weakness");
+        NamespacedKey weaknessKey = new NamespacedKey("lumidrugs", "drug_status/minecraft/weakness");
         var weakness = new DrugStatusTracker.Status(600, 0, List.of("weakness 1"));
         assertEquals(Map.of("cocaine", active, "effect/minecraft/weakness", weakness),
                 DrugStatusTracker.potionStatus(data, Map.of(statusKey, active, weaknessKey, weakness)));
@@ -65,8 +65,8 @@ class DrugStatusTrackerTest {
     }
 
     @Test void multipleDrugsAreReportedOnceEach() {
-        NamespacedKey second = new NamespacedKey("LumiDrugs", "drug_status/minecraft/strength");
-        NamespacedKey third = new NamespacedKey("LumiDrugs", "drug_status/minecraft/nausea");
+        NamespacedKey second = new NamespacedKey("lumidrugs", "drug_status/minecraft/strength");
+        NamespacedKey third = new NamespacedKey("lumidrugs", "drug_status/minecraft/nausea");
         stored.put(statusKey, "cocaine");
         stored.put(second, "cocaine");
         stored.put(third, "lsd");

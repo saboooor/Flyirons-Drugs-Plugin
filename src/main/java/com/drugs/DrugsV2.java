@@ -186,7 +186,7 @@ public class DrugsV2 extends JavaPlugin {
     @Override
     public String namespace() {
         String name = getName();
-        return name != null ? name.toLowerCase(java.util.Locale.ROOT) : "LumiDrugs";
+        return name != null ? name.toLowerCase(java.util.Locale.ROOT) : "lumidrugs";
     }
 
     @Override

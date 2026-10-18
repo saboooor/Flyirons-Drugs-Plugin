@@ -44,7 +44,7 @@ class EnforcerGuideTest {
         });
         plugin = mock(DrugsV2.class);
         when(plugin.getName()).thenReturn("LumiDrugs");
-        when(plugin.namespace()).thenReturn("LumiDrugs");
+        when(plugin.namespace()).thenReturn("lumidrugs");
         var server = mock(Server.class);
         var scheduler = mock(BukkitScheduler.class);
         when(plugin.getServer()).thenReturn(server);
