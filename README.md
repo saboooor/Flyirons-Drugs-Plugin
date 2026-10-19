@@ -40,7 +40,7 @@ Compared to a basic consumable-effects plugin, this version includes:
 - Native Minecraft advancements + configurable triggers.
 - PlaceholderAPI expansion for tolerance/effectiveness placeholders.
 - Admin tooling for reloading configs, purging player data, listing drugs, and resetting overdose counters.
-- Villager Weed Workers (Farm Controller automation with worker villagers).
+- Villager Farm Workers (Farm Controller automation with worker villagers).
 - Hallucinogen drugs: LSD (a client-side nether-portal trip + nausea) and Salvia (a dirt-block disguise).
 ---
 
@@ -69,7 +69,7 @@ Plugin enable initializes one phase per server tick; commands show an initializi
 6. Recover with the matching cure, sleep (for configured stimulants), or golden apple reset.
 7. Track your status with `/tolerance`.
 8. Browse cannabis strain info with `/strains`.
-9. Automate weed farms with Farm Controllers and worker villagers.
+9. Automate drug crop farms with Farm Controllers and worker villagers.
 10. Track progression through `/drugs achievements`.
 
 
@@ -177,7 +177,7 @@ Withdrawal behavior (effect types, timings, point decay) is per-drug and configu
 
 ---
 
-## Villager Weed Workers
+## Villager Farm Workers
 
 Automated drug crop farming is available through Farm Controllers:
 
@@ -186,11 +186,11 @@ Automated drug crop farming is available through Farm Controllers:
 - Start/Stop the farm from the controller dialog.
 - Purchase work contracts with emeralds and assign up to **5 villagers** by holding a contract in your main hand and right-clicking a villager. Each contract is already linked to its farm; you do not need to look at the controller.
 - Assigned villagers are set to **Farmer** profession and must be reachable to contribute output.
-- Workers harvest mature cannabis, poppy, mushroom, ephedra, coca, sassafras, ergot, salvia, and resin crops. Plant the initial crops yourself; workers reuse harvested seeds within each cycle. All crops, including cannabis, need hydrated farmland and light level 9+ to grow. Unused seeds and harvests drop at the controller. Vanilla wheat is left untouched.
+- Workers harvest mature cannabis, poppy, mushroom, ephedra, coca, sassafras, ergot, salvia, and resin crops. Plant the initial crops yourself; workers reuse harvested seeds within each cycle. All crops, including cannabis, need hydrated farmland and light level 9+ to grow. Use **Set Output Chest** in the controller dialog, then right-click a chest, to store harvests and unused seeds (double chests supported). **Clear Output Chest** restores drops at the controller. Overflow or output for a missing/unloaded chest drops at the controller. The chest link survives restarts and remains at the same location when moving the controller. Vanilla wheat is left untouched.
 - New controllers are barrels; existing composter controllers remain usable. Breaking a controller drops a barrel item containing its farm ID, area, worker links, and start/stop setting. Workers that cannot be found as living, valid villagers when the controller is placed again are removed (including workers in unloaded chunks). The farm pauses until placed again; its area moves by the same offset as the controller. Contracts remain valid while packed. Packed farms survive server restarts. Contracts for genuinely missing farms are exchanged for one emerald each when the player joins or an invalid contract is used.
 - Dead/invalid villagers are removed from farm assignment data automatically.
 
-Worker throughput scales by reachable workers per cycle (1 to 5 workers), based on `mechanics.yml` weed-farm settings.
+Worker throughput scales by reachable workers per cycle (1 to 5 workers), based on `mechanics.yml` farm settings.
 
 ---
 
@@ -243,10 +243,10 @@ If PlaceholderAPI is installed, this plugin registers `%drugs_...%` placeholders
 - `overdose.yml` → overdose effects and policy
 - `strains.yml` → cannabis strains and mutation graph
 - `bong.yml` → bong behavior and item settings
-- `mechanics.yml` → growth + durability mechanics + weed-farm cycle caps
+- `mechanics.yml` → growth + durability mechanics + farm cycle caps
 - `achievement_settings.yml` → achievement master toggles
 - `achievements.yml` → achievement definitions/triggers
-- `weed_farms.yml` → persisted farm controller/region/worker data
+- `farms.yml` → persisted farm controller/region/worker data
 
 ---
 
@@ -271,8 +271,7 @@ Existing `recipes.yml` files receive the requirement at registration, without be
 Use `/drugs growing` for instructions or click a drug in `/drugs` to view its current recipe.
 
 Craft one crop seed by combining wheat seeds with the starter below (shapeless).
-Right click hydrated farmland to plant. These crops look like wheat and advance through
-visible growth stages; growth pauses in unloaded chunks, dry soil, or light below 9.
+Right click hydrated farmland to plant. Crops use distinct plant blocks configured by `plant-block` in `growing.yml`. Right-click empty-handed to see a progress bar, percentage, remaining active growth time, and any paused conditions. Existing wheat crops convert automatically in loaded chunks; growth pauses in unloaded chunks, dry soil, or light below 9.
 Break a fully mature crop to receive two harvested ingredients and one reusable seed.
 Breaking early returns only its seed. Bone meal cannot skip growing.
 
@@ -284,7 +283,7 @@ Breaking early returns only its seed. Bone meal cannot skip growing.
 | Coca | Vine | Cocaine | 15 minutes |
 | Sassafras | Magenta dye | Molly | 15 minutes |
 | Ergot | Spore blossom | LSD | 20 minutes |
-| Salvia | Fern | Salvia | 10 minutes |
+| Salvia | Lilac | Salvia | 10 minutes |
 | Resin | Bone meal | Glue | 10 minutes |
 
 Cannabis uses the existing fern growing system: plant a fern, wait for a large fern,
@@ -295,7 +294,7 @@ and deliver the harvested buds at their controller.
 
 Ingredient crop progress is saved in `ingredient_plants.yml` on planting, harvesting,
 every minute, and shutdown. Configure crop durations in `growing.yml`; `/drugs reload`
-applies changes. Cannabis uses the average growth time in `mechanics.yml`.
+applies changes. Cannabis uses the average growth time in `mechanics.yml`; its empty-hand right-click readout shows growing/paused/ready status rather than a fixed percentage because its growth is random.
 Finished items remain available through the existing admin give command.
 
 ## Cartel NPC Buyers
@@ -338,3 +337,9 @@ npc:
 Leave `skin-name` blank to restore the bundled skin. Reload updates existing buyers and calls off active enforcer demands; subsequent enforcers use the updated skin. Username-based skins require Citizens to fetch the account's skin from Mojang.
 
 If `/cartel enforcer` cannot start, its error identifies the failed requirement: player mode/permissions, an existing encounter, pricing, economy, NPC provider, safe ground, or NPC spawning. For a Citizens spawn failure, check the console for the associated spawn rejection or exception. Enforcers now attempt navigation without rejecting a new NPC on Citizens' preliminary path check; unreachable players are handled by the approach timeout.
+
+Farm data now saves to `farms.yml`; existing `weed_farms.yml` is read automatically when the new file is absent. Legacy `weed-farm` mechanics settings remain supported when no `farm` section exists.
+
+## Java source layout
+
+Production code lives in `src/main/java/com/drugs`, grouped by feature: `farm`, `growing`, `strains`, `bong`, `cartel`, `drug`, `items`, `recipes`, `addiction`, `tolerance`, `overdose`, `effects`, `achievements`, `status`, `commands`, `ui`, `config`, `integration`, and `bootstrap`. Tests mirror these packages under `src/test/java/com/drugs`. `DrugsV2` remains at the root as the plugin entry point.

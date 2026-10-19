@@ -1,13 +1,58 @@
 package com.drugs;
 
-import org.bukkit.Bukkit;
+import com.drugs.achievements.AchievementSettingsLoader;
+import com.drugs.achievements.CustomAchievementLoader;
+import com.drugs.achievements.NativeAdvancements;
+import com.drugs.addiction.AddictionConfigLoader;
+import com.drugs.addiction.AddictionListener;
+import com.drugs.addiction.AddictionManager;
+import com.drugs.addiction.CureRegistry;
+import com.drugs.bong.BongConfigLoader;
+import com.drugs.bong.BongItemFactory;
+import com.drugs.bong.BongListener;
+import com.drugs.bong.BongRegistry;
+import com.drugs.bootstrap.PerformanceOptimizer;
+import com.drugs.bootstrap.PluginStartup;
+import com.drugs.cartel.CartelDealer;
+import com.drugs.cartel.CartelDroppedSales;
+import com.drugs.cartel.CartelEnforcer;
+import com.drugs.cartel.CartelNpcs;
+import com.drugs.cartel.EnforcerGuide;
+import com.drugs.commands.DrugStatusCommand;
+import com.drugs.commands.DrugsCommand;
+import com.drugs.commands.DrugsTabCompleter;
+import com.drugs.commands.StrainsCommand;
+import com.drugs.commands.ToleranceCommand;
+import com.drugs.config.MechanicsConfig;
+import com.drugs.drug.DrugRegistry;
+import com.drugs.drug.DrugUseListener;
+import com.drugs.effects.LsdEffectManager;
+import com.drugs.effects.SalviaEffectManager;
+import com.drugs.growing.CannabisPlantListener;
+import com.drugs.growing.CannabisPlantRegistry;
+import com.drugs.growing.DrugGrowing;
+import com.drugs.integration.DrugsPlaceholderExpansion;
+import com.drugs.overdose.OverdoseEffectManager;
+import com.drugs.recipes.DrugRecipeHelper;
+import com.drugs.recipes.HarvestCraftingListener;
+import com.drugs.recipes.RecipeUpdates;
+import com.drugs.status.DrugStatusTracker;
+import com.drugs.strains.StrainConfigLoader;
+import com.drugs.strains.StrainCraftingListener;
+import com.drugs.strains.StrainsMenuListener;
+import com.drugs.tolerance.ToleranceConfigLoader;
+import com.drugs.tolerance.ToleranceTracker;
+import com.drugs.ui.BedrockForms;
+import com.drugs.ui.DialogView;
+import com.drugs.ui.DrugMenuListener;
+
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.plugin.java.JavaPlugin;
-import com.drugs.weedfarm.WeedFarmControllerListener;
-import com.drugs.weedfarm.WeedFarmItems;
-import com.drugs.weedfarm.WeedFarmManager;
-import com.drugs.weedfarm.WeedFarmWorkerService;
+import com.drugs.farm.FarmControllerListener;
+import com.drugs.farm.FarmItems;
+import com.drugs.farm.FarmManager;
+import com.drugs.farm.FarmWorkerService;
 
 import java.io.File;
 import java.util.List;
@@ -23,11 +68,11 @@ public class DrugsV2 extends JavaPlugin {
     private File recipesFile;
     private BongListener bongListener;
     private DrugGrowing drugGrowing;
-    private WeedFarmManager weedFarmManager;
-    private WeedFarmControllerListener weedFarmControllerListener;
+    private FarmManager farmManager;
+    private FarmControllerListener farmControllerListener;
 
-    public WeedFarmControllerListener getWeedFarmControllerListener() {
-        return weedFarmControllerListener;
+    public FarmControllerListener getFarmControllerListener() {
+        return farmControllerListener;
     }
     private LsdEffectManager lsdEffectManager;
     private SalviaEffectManager salviaEffectManager;
@@ -88,19 +133,21 @@ public class DrugsV2 extends JavaPlugin {
                     BongRegistry.init(getDataFolder());
                     bongsLoaded = true;
                 }),
-                new PluginStartup.Step("saved weed farms", () -> {
-                    weedFarmManager = new WeedFarmManager(getDataFolder());
-                    weedFarmManager.load();
+                new PluginStartup.Step("saved farms", () -> {
+                    farmManager = new FarmManager(getDataFolder());
+                    farmManager.load();
                     farmsLoaded = true;
                 }),
+                new PluginStartup.Step("begin recipe batch", RecipeUpdates::begin),
                 new PluginStartup.Step("ingredient crops and recipes", () -> drugGrowing = new DrugGrowing(this)),
-                new PluginStartup.Step("drug recipes", () -> DrugRegistry.init(this)),
+                PluginStartup.Step.expand("drug recipes", () -> DrugRegistry.startupSteps(this)),
                 new PluginStartup.Step("achievement definitions", () -> CustomAchievementLoader.load(getDataFolder())),
                 new PluginStartup.Step("cure recipes", () -> CureRegistry.init(this)),
                 new PluginStartup.Step("bong and farm recipes", () -> {
                     registerBongRecipe();
                     registerFarmControllerRecipe();
                 }),
+                new PluginStartup.Step("publish recipe batch", RecipeUpdates::end),
                 new PluginStartup.Step("saved addiction data", () -> {
                     AddictionManager.init(this);
                     addictionLoaded = true;
@@ -135,9 +182,9 @@ public class DrugsV2 extends JavaPlugin {
         salviaEffectManager = new SalviaEffectManager(this);
         manager.registerEvents(salviaEffectManager, this);
         manager.registerEvents(new NativeAdvancements(), this);
-        weedFarmControllerListener = new WeedFarmControllerListener(weedFarmManager);
-        manager.registerEvents(weedFarmControllerListener, this);
-        getServer().getScheduler().runTaskTimer(this, new WeedFarmWorkerService(weedFarmManager, drugGrowing),
+        farmControllerListener = new FarmControllerListener(farmManager);
+        manager.registerEvents(farmControllerListener, this);
+        getServer().getScheduler().runTaskTimer(this, new FarmWorkerService(farmManager, drugGrowing),
                 MechanicsConfig.getWorkerTickInterval(), MechanicsConfig.getWorkerTickInterval());
         getServer().getScheduler().runTask(this, () -> BongRegistry.respawnMissing(bongListener));
 
@@ -192,6 +239,7 @@ public class DrugsV2 extends JavaPlugin {
     @Override
     public void onDisable() {
         if (startup != null) startup.cancel();
+        RecipeUpdates.reset();
         if (cartelDroppedSales != null) cartelDroppedSales.shutdown();
         if (cartelEnforcer != null) cartelEnforcer.shutdown();
         if (cartelNpcs != null) cartelNpcs.shutdown();
@@ -204,7 +252,7 @@ public class DrugsV2 extends JavaPlugin {
         if (cannabisLoaded) savePhase("saving cannabis plants", CannabisPlantRegistry::save);
         if (drugGrowing != null) savePhase("saving ingredient crops", drugGrowing::save);
         if (bongsLoaded) savePhase("saving bongs", BongRegistry::save);
-        if (farmsLoaded) savePhase("saving weed farms", weedFarmManager::save);
+        if (farmsLoaded) savePhase("saving farms", farmManager::save);
         if (addictionLoaded) savePhase("saving addiction data", AddictionManager::shutdown);
         getLogger().info("LumiDrugs disabled.");
     }
@@ -305,7 +353,7 @@ public class DrugsV2 extends JavaPlugin {
         var recipeSection = recipesConfig.getConfigurationSection("farm-controller");
         if (recipeSection == null) return;
 
-        DrugRecipeHelper.registerItemRecipe("farm_controller", recipeSection, WeedFarmItems.createControllerItem(), this);
+        DrugRecipeHelper.registerItemRecipe("farm_controller", recipeSection, FarmItems.createControllerItem(), this);
     }
     public FileConfiguration getRecipesConfig() {
         return recipesConfig;

@@ -298,7 +298,7 @@ If you play this system like a long-term strategy game, you’ll consistently ou
 
 Use `/drugs growing` to see how to obtain each crop's seeds. Combine wheat seeds with
 the listed starter, then right click hydrated farmland to plant. Keep it watered and
-lit and wait until the wheat-shaped crop is fully grown. Harvesting early returns only
+lit and wait until the crop is fully grown. Crops have distinct plant appearances; right-click with an empty hand to see growth percentage, time remaining, and any paused conditions. Harvesting early returns only
 the seed; mature crops yield two special ingredients plus a reusable seed. Bone meal
 cannot skip the wait. Use `/drugs` to view recipes with the required harvested items.
 
