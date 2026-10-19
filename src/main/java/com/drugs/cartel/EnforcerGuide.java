@@ -129,7 +129,7 @@ public final class EnforcerGuide implements Listener {
         if (crop.equals("cannabis")) return List.of(
                 "Plant a fern or cannabis plant on hydrated farmland. Keep it lit (light level 9+).",
                 "Leave air above it and keep the chunk loaded.",
-                "Wait for it to become a large fern (average " + MechanicsConfig.getCannabisGrowthSeconds() + "s).",
+                "Wait for it to become a large fern (" + DrugGrowing.growthSeconds("cannabis") + "s of active growth). Right-click empty-handed to check progress.",
                 "Bone meal cannot speed up cannabis growth.",
                 "Break the mature large fern using shears.",
                 "Collect the Cannabis Buds and use them in the recipe.");

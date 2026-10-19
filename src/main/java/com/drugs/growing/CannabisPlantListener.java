@@ -1,7 +1,6 @@
 package com.drugs.growing;
 
 import com.drugs.DrugsV2;
-import com.drugs.config.MechanicsConfig;
 import com.drugs.items.DrugItemMetadata;
 import com.drugs.strains.StrainConfigLoader;
 import com.drugs.strains.StrainProfile;
@@ -21,17 +20,15 @@ import org.bukkit.inventory.meta.ItemMeta;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 
 /**
  * Handles placing and harvesting of strain-tagged fern plants.
  */
 public class CannabisPlantListener implements Listener {
 
-    public CannabisPlantListener() {
-        DrugsV2 plugin = DrugsV2.getInstance();
-        plugin.getServer().getScheduler().runTaskTimer(plugin, this::tickAutoGrowth, 20L, 20L);
-    }
+    private final DrugGrowing growing;
+
+    public CannabisPlantListener(DrugGrowing growing) { this.growing = growing; }
 
     public static boolean hasHydratedFarmland(Block plant) {
         return plant.getRelative(0, -1, 0).getBlockData() instanceof org.bukkit.block.data.type.Farmland soil
@@ -72,6 +69,7 @@ public class CannabisPlantListener implements Listener {
         org.bukkit.Bukkit.getPluginManager().callEvent(place);
         if (place.isCancelled() || !place.canBuild()) {
             CannabisPlantRegistry.removePlant(plant.getLocation());
+            growing.forget(plant);
             replaced.update(true, false);
             return;
         }
@@ -79,26 +77,10 @@ public class CannabisPlantListener implements Listener {
             event.getItem().setAmount(event.getItem().getAmount() - 1);
     }
 
-    @EventHandler(ignoreCancelled = true)
-    public void inspect(org.bukkit.event.player.PlayerInteractEvent event) {
-        if (event.getHand() != org.bukkit.inventory.EquipmentSlot.HAND
-                || event.getAction() != org.bukkit.event.block.Action.RIGHT_CLICK_BLOCK
-                || event.getClickedBlock() == null
-                || !event.getPlayer().getInventory().getItemInMainHand().isEmpty()) return;
-        Block root = getRootFernBlock(event.getClickedBlock());
-        String strain = CannabisPlantRegistry.getPlant(root.getLocation());
-        if (strain == null) return;
-        event.setCancelled(true);
-        String status = root.getType() == Material.LARGE_FERN ? "§aReady to harvest with shears"
-                : !hasHydratedFarmland(root) ? "§ePaused: needs hydrated farmland"
-                : root.getLightLevel() < 9 ? "§ePaused: needs light level 9+"
-                : "§eGrowing (random growth; average " + MechanicsConfig.getCannabisGrowthSeconds() + "s)";
-        event.getPlayer().sendActionBar("§aCannabis §7(" + strain + ") §8— " + status);
-    }
-
     @EventHandler(priority = org.bukkit.event.EventPriority.MONITOR, ignoreCancelled = true)
     public void onPlace(BlockPlaceEvent event) {
-        if (event.getItemInHand().getType() == Material.FERN) applyPlacedCannabis(event.getBlockPlaced(), event.getItemInHand());
+        if (event.getItemInHand().getType() == Material.FERN
+                && applyPlacedCannabis(event.getBlockPlaced(), event.getItemInHand())) growing.trackCannabis(event.getBlockPlaced());
     }
 
     @EventHandler(priority = org.bukkit.event.EventPriority.HIGHEST, ignoreCancelled = true)
@@ -109,6 +91,7 @@ public class CannabisPlantListener implements Listener {
             return;
         }
 
+        growing.forget(result.getRootBlock());
         event.setDropItems(false);
         event.setExpToDrop(0);
 
@@ -183,34 +166,7 @@ public class CannabisPlantListener implements Listener {
         return new HarvestResult(rootBlock, drops);
     }
 
-    private void tickAutoGrowth() {
-        Map<org.bukkit.Location, String> plants = CannabisPlantRegistry.getPlantsSnapshot();
-        if (plants.isEmpty()) {
-            return;
-        }
-
-        int growthSeconds = MechanicsConfig.getCannabisGrowthSeconds();
-        double growthChance = Math.min(1.0D, 1.0D / growthSeconds);
-
-        for (org.bukkit.Location location : plants.keySet()) {
-            if (!location.getWorld().isChunkLoaded(location.getBlockX() >> 4, location.getBlockZ() >> 4)) continue;
-            Block root = location.getBlock();
-            if (root.getType() != Material.FERN) {
-                continue;
-            }
-
-            Block top = root.getRelative(0, 1, 0);
-            if (!top.getType().isAir() || !hasHydratedFarmland(root) || root.getLightLevel() < 9) {
-                continue;
-            }
-
-            if (Math.random() <= growthChance) {
-                growToLargeFern(root, top);
-            }
-        }
-    }
-
-    private void growToLargeFern(Block root, Block top) {
+    static void growToLargeFern(Block root, Block top) {
         root.setType(Material.LARGE_FERN, false);
         top.setType(Material.LARGE_FERN, false);
 

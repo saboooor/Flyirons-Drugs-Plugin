@@ -100,29 +100,14 @@ public class FarmWorkerService implements Runnable {
                 if (worker != null) {
                     List<ItemStack> drops = growing.harvestMature(block);
                     if (!drops.isEmpty()) {
-                        workerSeeds.add(drops.get(0));
-                        for (int d = 1; d < drops.size(); d++) storeOutput(farm, drops.get(d));
-                        consumeQuota(workerHarvestQuota, worker.getUniqueId());
-                        harvests++;
-                        moveWorker(worker, block.getLocation().add(0.5, 0, 0.5));
-                    }
-                }
-            }
-
-            if (harvests < maxHarvest && block.getType() == Material.LARGE_FERN) {
-                Villager worker = selectReachableWorker(workers, block, workerHarvestQuota);
-                if (worker != null) {
-                    CannabisPlantListener.HarvestResult result = CannabisPlantListener.harvestCannabis(block, true);
-                    if (result != null) {
-                        for (ItemStack drop : result.getDrops()) {
-                            if (drop.getType() == Material.FERN && drop.hasItemMeta()
-                                && "cannabis_plant".equals(com.drugs.items.DrugItemMetadata.getItemType(drop.getItemMeta()))) workerSeeds.add(drop);
+                        for (ItemStack drop : drops) {
+                            String type = drop.hasItemMeta() ? com.drugs.items.DrugItemMetadata.getItemType(drop.getItemMeta()) : null;
+                            if (type != null && (type.startsWith("seed_") || type.equals("cannabis_plant"))) workerSeeds.add(drop);
                             else storeOutput(farm, drop);
                         }
                         consumeQuota(workerHarvestQuota, worker.getUniqueId());
                         harvests++;
-                        moveWorker(worker, result.getRootBlock().getLocation().add(0.5, 0, 0.5));
-                        result.getRootBlock().getWorld().spawnParticle(Particle.HAPPY_VILLAGER, result.getRootBlock().getLocation().add(0.5, 0.8, 0.5), 6, 0.2, 0.3, 0.2, 0.0);
+                        moveWorker(worker, block.getLocation().add(0.5, 0, 0.5));
                     }
                 }
             }
@@ -132,14 +117,7 @@ public class FarmWorkerService implements Runnable {
                 if (planter != null) {
                     for (int seedIndex = 0; seedIndex < workerSeeds.size(); seedIndex++) {
                         ItemStack seed = workerSeeds.get(seedIndex);
-                        boolean planted = false;
-                        if (seed.getType() == Material.FERN && isPlantable(block)) {
-                            block.setType(Material.FERN, false);
-                            planted = CannabisPlantListener.applyPlacedCannabis(block, seed);
-                            if (!planted) block.setType(Material.AIR, false);
-                        } else if (growing != null) {
-                            planted = growing.plantSeed(block, seed);
-                        }
+                        boolean planted = growing != null && growing.plantSeed(block, seed);
                         if (!planted) continue;
                         workerSeeds.remove(seedIndex);
                         plants++;
@@ -241,10 +219,6 @@ public class FarmWorkerService implements Runnable {
     private void moveWorker(Villager villager, Location target) {
         villager.swingMainHand();
 
-    }
-
-    private boolean isPlantable(Block block) {
-        return block.getType().isAir() && CannabisPlantListener.hasHydratedFarmland(block);
     }
 
     private int farmVolume(Farm farm) {

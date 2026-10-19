@@ -28,3 +28,7 @@ salvia:
 resin:
   plant-block: SPRUCE_SAPLING
   growth-seconds: 600
+
+# Fixed active growth time; strains and shears harvesting are preserved.
+cannabis:
+  growth-seconds: 600

@@ -53,6 +53,7 @@ public final class DrugGrowing implements Listener {
     public void reloadConfiguration() {
         var config = YamlConfiguration.loadConfiguration(new File(plugin.getDataFolder(), "growing.yml"));
         crops.clear();
+        add("cannabis", "Cannabis Buds", Material.FERN, com.drugs.config.MechanicsConfig.getCannabisGrowthSeconds(), config);
         add("poppy", "Poppy Pods", Material.POPPY, 600, config);
         add("mushroom", "Cultivated Mushrooms", Material.RED_MUSHROOM, 480, config);
         add("ephedra", "Ephedra Leaves", Material.QUARTZ, 900, config);
@@ -68,6 +69,7 @@ public final class DrugGrowing implements Listener {
                 "salvia", Material.LILAC, "resin", Material.SPRUCE_SAPLING);
         plantBlocks.clear();
         for (String id : crops.keySet()) {
+            if (id.equals("cannabis")) { plantBlocks.put(id, Material.FERN); continue; }
             Material chosen = Material.matchMaterial(config.getString(id + ".plant-block", defaults.get(id).name()));
             if (id.equals("salvia") && chosen == Material.FERN) chosen = Material.LILAC;
             if (chosen == null || !defaults.containsValue(chosen)) {
@@ -84,6 +86,11 @@ public final class DrugGrowing implements Listener {
     }
 
     public static Crop crop(String id) { return crops.get(id); }
+
+    public static int growthSeconds(String crop) {
+        Crop definition = crops.get(crop);
+        return definition != null ? definition.seconds() : com.drugs.config.MechanicsConfig.getCannabisGrowthSeconds();
+    }
 
     public static Set<String> cropIds() { return Collections.unmodifiableSet(crops.keySet()); }
     public static String requirement(String drug) { return requirements.get(drug.toLowerCase(Locale.ROOT)); }
@@ -106,6 +113,7 @@ public final class DrugGrowing implements Listener {
         return item;
     }
     public static ItemStack seed(String crop) {
+        if (crop.equals("cannabis")) return CannabisPlantListener.createStrainFern(DrugItemMetadata.DEFAULT_STRAIN_ID);
         ItemStack item = new ItemStack(Material.WHEAT_SEEDS);
         ItemMeta meta = item.getItemMeta();
         DrugItemMetadata.setItemType(meta, "seed_" + crop);
@@ -132,6 +140,7 @@ public final class DrugGrowing implements Listener {
     static Material plantBlock(String crop) { return plantBlocks.getOrDefault(crop, Material.WHEAT); }
 
     private Block root(Block block) {
+        if (block.getType() == Material.LARGE_FERN) block = CannabisPlantListener.getRootFernBlock(block);
         if (plants.containsKey(key(block))) return block;
         if (block.getType() == Material.LILAC
                 && block.getBlockData() instanceof org.bukkit.block.data.Bisected half
@@ -161,7 +170,16 @@ public final class DrugGrowing implements Listener {
         block.setType(Material.AIR, false);
     }
 
+    public void trackCannabis(Block block) {
+        plants.putIfAbsent(key(block), new Plant("cannabis", block.getType() == Material.LARGE_FERN ? crops.get("cannabis").seconds() : 0));
+    }
+
+    public void forget(Block block) { plants.remove(key(block)); }
+
     private boolean matchesPlant(Block block, Plant plant) {
+        if (plant != null && plant.crop().equals("cannabis"))
+            return block.getType() == Material.FERN || block.getType() == Material.LARGE_FERN;
+
         return plant != null && crops.containsKey(plant.crop())
                 && (block.getType() == plantBlock(plant.crop()) || block.getType() == Material.WHEAT
                     || (plant.crop().equals("salvia") && block.getType() == Material.FERN));
@@ -183,6 +201,7 @@ public final class DrugGrowing implements Listener {
         if (plant.elapsed() >= crop.seconds()) status = "§aReady to harvest";
         else if (!(block.getRelative(0, -1, 0).getBlockData() instanceof org.bukkit.block.data.type.Farmland soil)
                 || soil.getMoisture() == 0) status = "§ePaused: needs hydrated farmland";
+        else if (plant.crop().equals("cannabis") && block.getType() == Material.FERN && !block.getRelative(0, 1, 0).isEmpty()) status = "§ePaused: needs space above";
         else if (block.getLightLevel() < 9) status = "§ePaused: needs light level 9+";
         else status = "§7" + (crop.seconds() - plant.elapsed()) + "s of active growth left";
         event.getPlayer().sendActionBar("§a" + crop.name() + " §8[§a" + "|".repeat(filled)
@@ -193,6 +212,7 @@ public final class DrugGrowing implements Listener {
         block = root(block);
         Plant plant = plants.get(key(block));
         return matchesPlant(block, plant)
+                && (!plant.crop().equals("cannabis") || block.getType() == Material.LARGE_FERN)
                 && plant.elapsed() >= crops.get(plant.crop()).seconds();
     }
 
@@ -201,6 +221,13 @@ public final class DrugGrowing implements Listener {
         block = root(block);
         Plant plant = plants.get(key(block));
         if (!isMature(block)) return List.of();
+        if (plant.crop().equals("cannabis")) {
+            var result = CannabisPlantListener.harvestCannabis(block, true);
+            if (result == null) return List.of();
+            forget(block);
+            save();
+            return result.getDrops();
+        }
         plants.remove(key(block));
         clearModel(block);
         save();
@@ -208,6 +235,13 @@ public final class DrugGrowing implements Listener {
     }
 
     public boolean plantSeed(Block block, ItemStack seed) {
+        if (seed.getType() == Material.FERN && block.isEmpty() && CannabisPlantListener.hasHydratedFarmland(block)) {
+            block.setType(Material.FERN, false);
+            if (!CannabisPlantListener.applyPlacedCannabis(block, seed)) { block.setType(Material.AIR, false); return false; }
+            trackCannabis(block);
+            save();
+            return true;
+        }
         String type = seed.hasItemMeta() ? DrugItemMetadata.getItemType(seed.getItemMeta()) : null;
         if (type == null || !type.startsWith("seed_") || !crops.containsKey(type.substring(5))
                 || !block.isEmpty()
@@ -248,7 +282,9 @@ public final class DrugGrowing implements Listener {
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void harvest(BlockBreakEvent event) {
         Block root = root(event.getBlock());
-        Plant plant = plants.remove(key(root));
+        Plant plant = plants.get(key(root));
+        if (plant != null && plant.crop().equals("cannabis")) return;
+        plants.remove(key(root));
         if (plant == null) return;
         event.setDropItems(false);
         event.setExpToDrop(0);
@@ -323,6 +359,12 @@ public final class DrugGrowing implements Listener {
         if (event.getBlocks().stream().anyMatch(block -> plants.containsKey(key(block)))) event.setCancelled(true);
     }
     private void tick() {
+        // Import legacy strain-only saves, including plants in chunks loaded later.
+        for (var location : CannabisPlantRegistry.getPlantsSnapshot().keySet()) {
+            if (!location.getWorld().isChunkLoaded(location.getBlockX() >> 4, location.getBlockZ() >> 4)) continue;
+            Block block = location.getBlock();
+            if (block.getType() == Material.FERN || block.getType() == Material.LARGE_FERN) trackCannabis(block);
+        }
         var iterator = plants.entrySet().iterator();
         while (iterator.hasNext()) {
             var entry = iterator.next();
@@ -342,12 +384,16 @@ public final class DrugGrowing implements Listener {
                         && upperHalf.getHalf() == org.bukkit.block.data.Bisected.Half.TOP) upper.setType(Material.AIR, false);
                 placeModel(block, plant.crop());
             }
-            if (block.getType() != plantBlock(plant.crop()) && !placeModel(block, plant.crop())) continue;
+            if (!plant.crop().equals("cannabis") && block.getType() != plantBlock(plant.crop()) && !placeModel(block, plant.crop())) continue;
             Block soil = block.getRelative(0, -1, 0);
             if (!(soil.getBlockData() instanceof org.bukkit.block.data.type.Farmland farmland) || farmland.getMoisture() == 0 || block.getLightLevel() < 9) continue;
+            if (plant.crop().equals("cannabis") && block.getType() == Material.FERN
+                    && !block.getRelative(0, 1, 0).isEmpty()) continue;
             int seconds = crops.get(plant.crop()).seconds();
             int elapsed = Math.min(seconds, plant.elapsed() + 1);
             entry.setValue(new Plant(plant.crop(), elapsed));
+            if (plant.crop().equals("cannabis") && elapsed >= seconds && block.getType() == Material.FERN)
+                CannabisPlantListener.growToLargeFern(block, block.getRelative(0, 1, 0));
             if (block.getBlockData() instanceof Ageable age) {
                 int stage = elapsed * age.getMaximumAge() / seconds;
                 if (stage != age.getAge()) { age.setAge(stage); block.setBlockData(age, false); }

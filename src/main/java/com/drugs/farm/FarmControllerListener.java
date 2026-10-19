@@ -43,6 +43,18 @@ public class FarmControllerListener implements Listener {
     }
 
     @EventHandler(ignoreCancelled = true)
+    public void onWorkerPlant(org.bukkit.event.entity.EntityChangeBlockEvent event) {
+        if (!(event.getEntity() instanceof Villager villager)
+                || manager.getByVillager(villager.getUniqueId()) == null) return;
+        // Controller planting uses the tracked drug-crop API directly. Suppress
+        // vanilla farmer AI sowing ordinary seeds from the villager's inventory.
+        switch (event.getTo()) {
+            case WHEAT, CARROTS, POTATOES, BEETROOTS, TORCHFLOWER_CROP, PITCHER_CROP -> event.setCancelled(true);
+            default -> { }
+        }
+    }
+
+    @EventHandler(ignoreCancelled = true)
     public void onControllerPlace(BlockPlaceEvent event) {
         ItemStack item = event.getItemInHand();
         if (item == null || !item.hasItemMeta()) {

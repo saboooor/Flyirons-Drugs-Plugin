@@ -1,3 +1,4 @@
+# Legacy fallback only; cannabis growth now uses growing.yml -> cannabis.growth-seconds.
 cannabis:
   # Average time in seconds for a planted weed fern to auto-grow into a large fern.
   growth-seconds: 600

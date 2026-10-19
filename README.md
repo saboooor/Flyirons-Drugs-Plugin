@@ -171,7 +171,7 @@ Withdrawal behavior (effect types, timings, point decay) is per-drug and configu
 ## Cannabis Systems
 
 - `strains.yml` ships with an extensive strain tree, rarity, and mutation weights.
-- `mechanics.yml` controls cannabis growth timing.
+- `growing.yml` controls fixed active growth times for cannabis and all ingredient crops.
 - `bong.yml` controls bong enable state, base-drug behavior, cooldown, and bong item settings.
 - `mechanics.yml` also controls cart and bong durability uses.
 
@@ -294,7 +294,7 @@ and deliver the harvested buds at their controller.
 
 Ingredient crop progress is saved in `ingredient_plants.yml` on planting, harvesting,
 every minute, and shutdown. Configure crop durations in `growing.yml`; `/drugs reload`
-applies changes. Cannabis uses the average growth time in `mechanics.yml`; its empty-hand right-click readout shows growing/paused/ready status rather than a fixed percentage because its growth is random.
+applies changes. Cannabis uses the same saved growth timer, percentage readout, water/light checks, and farm worker path as other crops. Set `cannabis.growth-seconds` in `growing.yml` (600 seconds by default). The old mechanics setting is a fallback when the new setting is absent. Existing cannabis plants retain their strains; legacy immature plants start their timed growth when loaded, while mature plants stay ready to harvest.
 Finished items remain available through the existing admin give command.
 
 ## Cartel NPC Buyers
