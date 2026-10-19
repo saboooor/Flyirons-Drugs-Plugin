@@ -108,12 +108,17 @@ public final class DrugGrowing implements Listener {
     private static String key(Block block) {
         return block.getWorld().getUID() + ":" + block.getX() + ":" + block.getY() + ":" + block.getZ();
     }
+    public boolean isMature(Block block) {
+        if (block.getType() != Material.WHEAT) return false;
+        Plant plant = plants.get(key(block));
+        return plant != null && crops.containsKey(plant.crop())
+                && plant.elapsed() >= crops.get(plant.crop()).seconds();
+    }
+
     /** Harvest only tracked, mature ingredient crops; vanilla wheat is never touched. */
     public List<ItemStack> harvestMature(Block block) {
         Plant plant = plants.get(key(block));
-        if (plant == null || block.getType() != Material.WHEAT
-                || !crops.containsKey(plant.crop())
-                || plant.elapsed() < crops.get(plant.crop()).seconds()) return List.of();
+        if (!isMature(block)) return List.of();
         plants.remove(key(block));
         block.setType(Material.AIR, false);
         save();

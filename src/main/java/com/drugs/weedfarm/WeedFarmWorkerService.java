@@ -4,7 +4,6 @@ import com.drugs.CannabisPlantListener;
 import com.drugs.MechanicsConfig;
 import com.drugs.DrugGrowing;
 import org.bukkit.Bukkit;
-import org.bukkit.FluidCollisionMode;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.Particle;
@@ -14,7 +13,6 @@ import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
 import org.bukkit.entity.Villager;
 import org.bukkit.inventory.ItemStack;
-import org.bukkit.util.Vector;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -29,6 +27,7 @@ public class WeedFarmWorkerService implements Runnable {
 
     private final WeedFarmManager manager;
     private final DrugGrowing growing;
+    private final java.util.Set<UUID> navigating = new java.util.HashSet<>();
     private final Random random = new Random();
 
     public WeedFarmWorkerService(WeedFarmManager manager, DrugGrowing growing) {
@@ -54,6 +53,7 @@ public class WeedFarmWorkerService implements Runnable {
     }
 
     private void processFarm(WeedFarm farm, World world) {
+        navigating.clear();
         List<Villager> workers = new ArrayList<>();
         for (UUID workerId : farm.getAssignedVillagers()) {
             Entity entity = Bukkit.getEntity(workerId);
@@ -90,8 +90,10 @@ public class WeedFarmWorkerService implements Runnable {
         while (inspected < total && (harvests < maxHarvest || plants < maxPlant)) {
             int index = (cursor + inspected) % total;
             Block block = blockAtIndex(world, farm, index);
+            // A wand selection made on farmland should work on the crops above it.
+            if (block.getType() == Material.FARMLAND) block = block.getRelative(0, 1, 0);
 
-            if (harvests < maxHarvest && growing != null && block.getType() == Material.WHEAT) {
+            if (harvests < maxHarvest && growing != null && growing.isMature(block)) {
                 Villager worker = selectReachableWorker(workers, block, workerHarvestQuota);
                 if (worker != null) {
                     List<ItemStack> drops = growing.harvestMature(block);
@@ -180,11 +182,7 @@ public class WeedFarmWorkerService implements Runnable {
             return false;
         }
 
-        if (!isOccupiable(villager.getLocation().getBlock())) {
-            return false;
-        }
-
-        Location stand = findStandLocation(targetPlant);
+        Location stand = findStandLocation(targetPlant, villager.getLocation());
         if (stand == null) {
             return false;
         }
@@ -194,57 +192,40 @@ public class WeedFarmWorkerService implements Runnable {
             return false;
         }
 
-        villager.getPathfinder().moveTo(stand);
-
-        if (distSq <= WORK_REACH_DISTANCE_SQUARED) {
-            return true;
-        }
-
-        return hasLineOfTravel(villager.getEyeLocation(), stand.clone().add(0, 1.0, 0));
+        if (distSq <= WORK_REACH_DISTANCE_SQUARED) return true;
+        // Keep one target per worker for this cycle instead of overwriting the path
+        // for every crop scanned. Work happens only after the worker arrives.
+        if (navigating.add(villager.getUniqueId())) villager.getPathfinder().moveTo(stand);
+        return false;
     }
 
-    private boolean hasLineOfTravel(Location from, Location to) {
-        Vector direction = to.toVector().subtract(from.toVector());
-        double length = direction.length();
-        if (length <= 0.001) {
-            return true;
-        }
-
-        return from.getWorld().rayTraceBlocks(
-                from,
-                direction.normalize(),
-                length,
-                FluidCollisionMode.NEVER,
-                true
-        ) == null;
-    }
-
-    private Location findStandLocation(Block plantBlock) {
+    private Location findStandLocation(Block plantBlock, Location workerLocation) {
         Block root = CannabisPlantListener.getRootFernBlock(plantBlock);
         Block[] candidates = new Block[] {
+                root,
                 root.getRelative(1, 0, 0),
                 root.getRelative(-1, 0, 0),
                 root.getRelative(0, 0, 1),
                 root.getRelative(0, 0, -1)
         };
-
+        Location nearest = null;
         for (Block candidate : candidates) {
-            if (isOccupiable(candidate)) {
-                return candidate.getLocation().add(0.5, 0, 0.5);
-            }
+            if (!isOccupiable(candidate)) continue;
+            Location stand = candidate.getLocation().add(0.5, 0, 0.5);
+            if (nearest == null || workerLocation.distanceSquared(stand) < workerLocation.distanceSquared(nearest)) nearest = stand;
         }
-        return null;
+        return nearest;
     }
 
     private boolean isOccupiable(Block feet) {
         Block head = feet.getRelative(0, 1, 0);
         Block ground = feet.getRelative(0, -1, 0);
-        return feet.isPassable() && head.isPassable() && ground.getType().isSolid();
+        return feet.isPassable() && head.isPassable() && (ground.getType() == Material.FARMLAND || ground.getType().isSolid());
     }
 
     private void moveWorker(Villager villager, Location target) {
         villager.swingMainHand();
-        villager.getPathfinder().moveTo(target);
+
     }
 
     private boolean isPlantable(Block block) {
