@@ -132,6 +132,7 @@ public final class DrugGrowing implements Listener {
     static Material plantBlock(String crop) { return plantBlocks.getOrDefault(crop, Material.WHEAT); }
 
     private Block root(Block block) {
+        if (plants.containsKey(key(block))) return block;
         if (block.getType() == Material.LILAC
                 && block.getBlockData() instanceof org.bukkit.block.data.Bisected half
                 && half.getHalf() == org.bukkit.block.data.Bisected.Half.TOP) return block.getRelative(0, -1, 0);
@@ -140,24 +141,23 @@ public final class DrugGrowing implements Listener {
 
     static boolean placeModel(Block block, String crop) {
         Material model = plantBlock(crop);
-        if (model == Material.LILAC && !block.getRelative(0, 1, 0).isEmpty()) return false;
         block.setType(model, false);
         if (model == Material.LILAC) {
-            var lower = (org.bukkit.block.data.Bisected) block.getBlockData();
-            lower.setHalf(org.bukkit.block.data.Bisected.Half.BOTTOM);
-            block.setBlockData(lower, false);
-            Block top = block.getRelative(0, 1, 0);
-            top.setType(model, false);
-            var upper = (org.bukkit.block.data.Bisected) top.getBlockData();
-            upper.setHalf(org.bukkit.block.data.Bisected.Half.TOP);
-            top.setBlockData(upper, false);
+            var flower = (org.bukkit.block.data.Bisected) block.getBlockData();
+            flower.setHalf(org.bukkit.block.data.Bisected.Half.TOP);
+            block.setBlockData(flower, false);
         }
         return true;
     }
 
     private void clearModel(Block block) {
-        if (block.getType() == Material.LILAC && block.getRelative(0, 1, 0).getType() == Material.LILAC)
-            block.getRelative(0, 1, 0).setType(Material.AIR, false);
+        // Clean up the upper half of plants placed before the single-block model.
+        if (block.getType() == Material.LILAC
+                && block.getBlockData() instanceof org.bukkit.block.data.Bisected half
+                && half.getHalf() == org.bukkit.block.data.Bisected.Half.BOTTOM) {
+            Block upper = block.getRelative(0, 1, 0);
+            if (upper.getType() == Material.LILAC && !plants.containsKey(key(upper))) upper.setType(Material.AIR, false);
+        }
         block.setType(Material.AIR, false);
     }
 
@@ -234,17 +234,10 @@ public final class DrugGrowing implements Listener {
         }
         // Respect protection plugins that guard block placement rather than interaction.
         var replaced = block.getState();
-        var topState = plantBlock(type.substring(5)) == Material.LILAC ? block.getRelative(0, 1, 0).getState() : null;
         if (!placeModel(block, type.substring(5))) return;
         var place = new BlockPlaceEvent(block, replaced, soil, event.getItem(), event.getPlayer(), true, event.getHand());
         Bukkit.getPluginManager().callEvent(place);
-        if (topState != null && !place.isCancelled() && place.canBuild()) {
-            var topPlace = new BlockPlaceEvent(block.getRelative(0, 1, 0), topState, soil, event.getItem(), event.getPlayer(), true, event.getHand());
-            Bukkit.getPluginManager().callEvent(topPlace);
-            if (topPlace.isCancelled() || !topPlace.canBuild()) place.setCancelled(true);
-        }
         if (place.isCancelled() || !place.canBuild()) {
-            if (topState != null) topState.update(true, false);
             replaced.update(true, false);
             return;
         }
@@ -340,6 +333,15 @@ public final class DrugGrowing implements Listener {
             Block block = world.getBlockAt(x, y, z);
             Plant plant = entry.getValue();
             if (!matchesPlant(block, plant)) { iterator.remove(); continue; }
+            if (block.getType() == Material.LILAC
+                    && block.getBlockData() instanceof org.bukkit.block.data.Bisected half
+                    && half.getHalf() == org.bukkit.block.data.Bisected.Half.BOTTOM) {
+                Block upper = block.getRelative(0, 1, 0);
+                if (upper.getType() == Material.LILAC && !plants.containsKey(key(upper))
+                        && upper.getBlockData() instanceof org.bukkit.block.data.Bisected upperHalf
+                        && upperHalf.getHalf() == org.bukkit.block.data.Bisected.Half.TOP) upper.setType(Material.AIR, false);
+                placeModel(block, plant.crop());
+            }
             if (block.getType() != plantBlock(plant.crop()) && !placeModel(block, plant.crop())) continue;
             Block soil = block.getRelative(0, -1, 0);
             if (!(soil.getBlockData() instanceof org.bukkit.block.data.type.Farmland farmland) || farmland.getMoisture() == 0 || block.getLightLevel() < 9) continue;

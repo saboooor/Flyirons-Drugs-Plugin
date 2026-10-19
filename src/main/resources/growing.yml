@@ -22,6 +22,7 @@ ergot:
   plant-block: WHEAT
   growth-seconds: 1200
 salvia:
+  # Single-block flower using only the lilac top half.
   plant-block: LILAC
   growth-seconds: 600
 resin:
