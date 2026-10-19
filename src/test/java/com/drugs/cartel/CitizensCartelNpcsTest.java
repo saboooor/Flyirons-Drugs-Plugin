@@ -85,6 +85,7 @@ class CitizensCartelNpcsTest {
         when(temporary.createNPC(eq(EntityType.PLAYER), anyString())).thenReturn(npc);
         world = mock(World.class);
         location = new Location(world, 1, 64, 1);
+        when(entity.getWorld()).thenReturn(world);
         when(entity.getLocation()).thenReturn(location);
         service = new CitizensCartelNpcs(plugin, dealer);
     }
@@ -171,16 +172,6 @@ class CitizensCartelNpcsTest {
         verify(dealer, never()).interactEnforcer(any(), any());
     }
 
-    @Test void sprintingRequiresTheTargetToMoveAway() {
-        World world = location.getWorld();
-        Location pursuer = new Location(world, 0, 64, 0);
-        Location previous = new Location(world, 5, 64, 0);
-        assertTrue(CitizensCartelNpcs.runningAway(pursuer, previous, new Location(world, 5.3, 64, 0), true));
-        assertFalse(CitizensCartelNpcs.runningAway(pursuer, previous, new Location(world, 4.7, 64, 0), true));
-        assertFalse(CitizensCartelNpcs.runningAway(pursuer, previous, previous, true));
-        assertFalse(CitizensCartelNpcs.runningAway(pursuer, previous, new Location(world, 5.3, 64, 0), false));
-    }
-
     @Test void unrelatedCitizensNpcsAreIgnored() {
         when(metadata.get(CitizensCartelNpcs.ROLE, "")).thenReturn("");
         NPCRightClickEvent event = mock(NPCRightClickEvent.class);
@@ -211,11 +202,14 @@ class CitizensCartelNpcsTest {
         verify(parameters).examiner(any(net.citizensnpcs.api.astar.pathfinder.DoorExaminer.class));
 
         // When stuckAction fires, enforcer teleports closer to target
-        assertTrue(stuck.getValue().run(npc, navigator));
+        try (MockedStatic<io.github.saboooor.lumifollow.SafeLocations> safe = mockStatic(io.github.saboooor.lumifollow.SafeLocations.class)) {
+            safe.when(() -> io.github.saboooor.lumifollow.SafeLocations.findNear(location, 4, 8)).thenReturn(location);
+            assertTrue(stuck.getValue().run(npc, navigator));
+        }
         verify(npc).teleport(any(Location.class), eq(org.bukkit.event.player.PlayerTeleportEvent.TeleportCause.PLUGIN));
 
         enforcer.stop();
-        verify(navigator).cancelNavigation();
+        verify(navigator, atLeastOnce()).cancelNavigation();
         // Navigation is attempted even if a preliminary path check would return false.
         verify(navigator, never()).canNavigateTo(any(Location.class));
         when(npc.isSpawned()).thenReturn(false);

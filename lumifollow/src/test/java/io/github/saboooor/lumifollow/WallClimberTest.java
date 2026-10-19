@@ -1,4 +1,4 @@
-package com.drugs.cartel;
+package io.github.saboooor.lumifollow;
 
 import org.bukkit.Location;
 import org.bukkit.Material;
@@ -16,11 +16,11 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
-class EnforcerWallClimberTest {
+class WallClimberTest {
     private final World world = mock(World.class);
     private final LivingEntity entity = mock(LivingEntity.class);
     private final Player target = mock(Player.class);
-    private final EnforcerWallClimber climber = new EnforcerWallClimber();
+    private final WallClimber climber = new WallClimber();
     private boolean ceiling;
 
     private void terrain(int wallHeight) {
