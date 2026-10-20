@@ -516,35 +516,14 @@ class CartelEnforcerTest {
         verify(player).sendMessage(contains("No registered drugs have a positive, finite base price"));
     }
 
-    @Test void onTeleportTeleportsEnforcerWithPlayer() {
-        spawnAndApproach();
-        Location from = player.getLocation();
-        Location to = new Location(world, 1000, 64, 1000);
-        org.bukkit.event.player.PlayerTeleportEvent event = mock(org.bukkit.event.player.PlayerTeleportEvent.class);
-        when(event.getPlayer()).thenReturn(player);
-        when(event.getFrom()).thenReturn(from);
-        when(event.getTo()).thenReturn(to);
-
-        enforcer.onTeleport(event);
-        verify(character, never()).destroy();
-        verify(character).teleportCloser(player);
-    }
-
-    @Test void onWorldChangeTeleportsEnforcerWithPlayer() {
-        spawnAndApproach();
-        org.bukkit.event.player.PlayerChangedWorldEvent event = mock(org.bukkit.event.player.PlayerChangedWorldEvent.class);
-        when(event.getPlayer()).thenReturn(player);
-
-        enforcer.onWorldChange(event);
-        verify(character, never()).destroy();
-        verify(character).teleportCloser(player);
-    }
-
-    @Test void tickTeleportsEnforcerCloserIfPlayerIsTooFar() {
+    @Test void encounterDoesNotOwnDistanceRecovery() {
         spawnAndApproach();
         when(player.getLocation()).thenReturn(new Location(world, 500, 64, 500));
         enforcer.tick();
         verify(character, never()).destroy();
-        verify(character).teleportCloser(player);
+        verify(character, never()).teleportCloser(any());
+        // The continuous library session owns pursuit; encounter ticks only manage the demand.
+        verify(character, times(1)).approach(player);
+        verify(character, never()).stop();
     }
 }

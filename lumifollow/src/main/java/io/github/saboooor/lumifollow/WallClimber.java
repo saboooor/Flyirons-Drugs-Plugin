@@ -1,4 +1,4 @@
-package com.drugs.cartel;
+package io.github.saboooor.lumifollow;
 
 import org.bukkit.Location;
 import org.bukkit.Material;
@@ -16,7 +16,12 @@ import java.util.HashSet;
 import java.util.Set;
 
 /** A bounded velocity assist; Citizens remains responsible for ordinary navigation. */
-final class EnforcerWallClimber {
+final class WallClimber {
+    private final boolean openDoors;
+
+    WallClimber() { this(true); }
+    WallClimber(boolean openDoors) { this.openDoors = openDoors; }
+
     private Location landing;
     private int ticks;
     private boolean exhausted;
@@ -82,7 +87,7 @@ final class EnforcerWallClimber {
             if (wall.getBlockX() == here.getBlockX() && wall.getBlockZ() == here.getBlockZ()) return false;
             if (!wall.getWorld().isChunkLoaded(wall.getBlockX() >> 4, wall.getBlockZ() >> 4)) return false;
             Block wallBlock = wall.getBlock();
-            if (isOpenable(wallBlock) || isOpenable(wallBlock.getRelative(BlockFace.UP))) {
+            if (openDoors && (isOpenable(wallBlock) || isOpenable(wallBlock.getRelative(BlockFace.UP)))) {
                 if (isOpenable(wallBlock)) openDoor(wallBlock, entity);
                 else openDoor(wallBlock.getRelative(BlockFace.UP), entity);
                 return false;
@@ -147,7 +152,7 @@ final class EnforcerWallClimber {
         step.normalize().multiply(speed);
         Location next = here.clone().add(step);
         Location floor = next.clone().subtract(0, 0.1, 0);
-        if (!clear(next)) {
+        if (openDoors && !clear(next)) {
             openDoorsInWay(entity, target);
         }
         if (clear(next)) {

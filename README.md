@@ -328,3 +328,14 @@ Farm data now saves to `farms.yml`; existing `weed_farms.yml` is read automatica
 ## Java source layout
 
 Production code lives in `src/main/java/com/drugs`, grouped by feature: `farm`, `growing`, `strains`, `bong`, `cartel`, `drug`, `items`, `recipes`, `addiction`, `tolerance`, `overdose`, `effects`, `achievements`, `status`, `commands`, `ui`, `config`, `integration`, and `bootstrap`. Tests mirror these packages under `src/test/java/com/drugs`. `DrugsV2` remains at the root as the plugin entry point.
+
+## Reusable NPC following library
+
+Cartel enforcer movement is implemented by the independent [LumiFollow](lumifollow/README.md)
+Maven library. It includes Citizens following, sprinting, doors, wall climbing, drop assists,
+and teleport recovery, and can be shaded into quest plugins or other Citizens integrations.
+LumiDrugs bundles its own relocated copy; no additional server plugin is needed.
+
+Build both modules with Java 21 using `mvn clean install` from this repository's root.
+The plugin JAR is now at `lumidrugs/target/LumiDrugs.jar`; the reusable library JAR is at
+`lumifollow/target/lumifollow-1.0.0.jar`. The library README contains dependency and usage examples.

@@ -1,10 +1,9 @@
 package com.drugs.cartel;
 
 import com.drugs.DrugsV2;
+import io.github.saboooor.lumifollow.*;
 
 import net.citizensnpcs.api.CitizensAPI;
-import net.citizensnpcs.api.ai.Navigator;
-import net.citizensnpcs.api.astar.pathfinder.DoorExaminer;
 import net.citizensnpcs.api.event.CitizensEnableEvent;
 import net.citizensnpcs.api.event.NPCRightClickEvent;
 import net.citizensnpcs.api.event.NPCLeftClickEvent;
@@ -32,10 +31,12 @@ final class CitizensCartelNpcs implements CartelNpcs, Listener {
     private final NPCRegistry temporary;
     private final YamlConfiguration bundledSkin;
     private boolean closed;
+    private final LumiFollow following;
 
     CitizensCartelNpcs(DrugsV2 plugin, CartelDealer dealer) {
         this.plugin = plugin;
         this.dealer = dealer;
+        following = new LumiFollow(plugin);
         temporary = CitizensAPI.createInMemoryNPCRegistry(TEMPORARY_REGISTRY);
         bundledSkin = YamlConfiguration.loadConfiguration(new InputStreamReader(Objects.requireNonNull(
                 CitizensCartelNpcs.class.getResourceAsStream("/cartel-skin.yml")), StandardCharsets.UTF_8));
@@ -129,6 +130,7 @@ final class CitizensCartelNpcs implements CartelNpcs, Listener {
     @Override public void shutdown() {
         if (closed) return;
         closed = true;
+        following.close();
         temporary.deregisterAll();
         CitizensAPI.removeNamedNPCRegistry(TEMPORARY_REGISTRY);
         CitizensAPI.getNPCRegistry().saveToStore();
@@ -160,180 +162,31 @@ final class CitizensCartelNpcs implements CartelNpcs, Listener {
         }
     }
 
-    static boolean runningAway(Location pursuer, Location previous, Location current, boolean sprinting) {
-        if (!sprinting || previous == null || !current.getWorld().equals(previous.getWorld())
-                || !current.getWorld().equals(pursuer.getWorld())) return false;
-        double dx = current.getX() - previous.getX();
-        double dz = current.getZ() - previous.getZ();
-        return dx * dx + dz * dz > 0.0001
-                && dx * (current.getX() - pursuer.getX()) + dz * (current.getZ() - pursuer.getZ()) > 0;
+    private FollowOptions followOptions() {
+        return FollowOptions.defaults()
+                .withDoors(dealer.settings().getBoolean("enforcer.open-doors", true))
+                .withClimbing(dealer.settings().getBoolean("enforcer.wall-climbing.enabled", true),
+                        Math.max(1, Math.min(16, dealer.settings().getInt("enforcer.wall-climbing.max-height", 6))),
+                        Math.max(20, Math.min(400, dealer.settings().getInt("enforcer.wall-climbing.timeout-ticks", 100))));
     }
 
     private final class Citizen implements Character {
-        private org.bukkit.scheduler.BukkitTask climbingTask;
-        private Player climbingTarget;
-        private boolean climbing;
-        private int retryTicks;
-        private int stuckTicks;
-        private Location lastLocation;
-        private Location previousTargetLocation;
-        private final EnforcerWallClimber climber = new EnforcerWallClimber();
         private final NPC npc;
         Citizen(NPC npc) { this.npc = npc; }
         public LivingEntity entity() { return (LivingEntity) npc.getEntity(); }
         public boolean valid() { return npc.isSpawned() && npc.getEntity() != null && npc.getEntity().isValid(); }
         public boolean approach(Player player) {
-            if (!valid()) return false;
-            if (owns(npc, "enforcer") && climbingTask == null) {
-                climbingTarget = player;
-                previousTargetLocation = player.getLocation();
-                climbingTask = plugin.getServer().getScheduler().runTaskTimer(plugin, () -> {
-                    if (closed || !valid() || !climbingTarget.isOnline() || climbingTarget.isDead()) {
-                        stop();
-                        return;
-                    }
-                    Location targetLocation = climbingTarget.getLocation();
-                    Location here = entity().getLocation();
-                    double distSq = here.getWorld().equals(targetLocation.getWorld())
-                            ? here.distanceSquared(targetLocation) : Double.MAX_VALUE;
-                    if (distSq > 6.25) {
-                        if (lastLocation != null && lastLocation.getWorld().equals(here.getWorld())
-                                && here.distanceSquared(lastLocation) < 0.09) {
-                            if (++stuckTicks >= 50) {
-                                stuckTicks = 0;
-                                teleportCloser(climbingTarget);
-                                return;
-                            }
-                        } else {
-                            stuckTicks = 0;
-                            lastLocation = here.clone();
-                        }
-                    } else {
-                        stuckTicks = 0;
-                        lastLocation = here.clone();
-                    }
-                    boolean sprinting = !climbing && runningAway(entity().getLocation(), previousTargetLocation,
-                            targetLocation, climbingTarget.isSprinting());
-                    previousTargetLocation = targetLocation;
-                    float speed = sprinting ? 1.5F : 1.15F;
-                    Navigator chase = npc.getNavigator();
-                    chase.getDefaultParameters().speedModifier(speed);
-                    if (chase.isNavigating()) chase.getLocalParameters().speedModifier(speed);
-                    if (entity() instanceof Player body) body.setSprinting(sprinting);
-                    boolean openDoors = dealer.settings().getBoolean("enforcer.open-doors", true);
-                    if (openDoors && entity() instanceof LivingEntity living) {
-                        boolean opened = climber.openDoorsInWay(living, climbingTarget);
-                        if (opened && !chase.isNavigating()) {
-                            chase.setTarget(climbingTarget, false);
-                        }
-                    }
-                    int height = Math.max(1, Math.min(16,
-                            dealer.settings().getInt("enforcer.wall-climbing.max-height", 6)));
-                    int timeout = Math.max(20, Math.min(400,
-                            dealer.settings().getInt("enforcer.wall-climbing.timeout-ticks", 100)));
-                    boolean wasClimbing = climbing;
-                    climbing = dealer.settings().getBoolean("enforcer.wall-climbing.enabled", true)
-                            && climber.tick(entity(), climbingTarget, height, timeout,
-                                    () -> npc.getNavigator().cancelNavigation());
-                    if (!climbing && !npc.getNavigator().isNavigating()) {
-                        climber.approachWhenNoPath(entity(), climbingTarget, sprinting ? 0.235 : 0.18);
-                    }
-                    if (!climbing && (wasClimbing || ++retryTicks >= 10)) {
-                        retryTicks = 0;
-                        if (wasClimbing || !npc.getNavigator().isNavigating()) {
-                            npc.getNavigator().setTarget(climbingTarget, false);
-                        }
-                    }
-                }, 1L, 1L);
-            }
-            if (climbing) return true;
-            Navigator navigator = npc.getNavigator();
-            if (navigator.isNavigating() && navigator.getEntityTarget() != null
-                    && navigator.getEntityTarget().getTarget().equals(player)) return true;
-            navigator.getDefaultParameters().range(64).speedModifier(1.15F).distanceMargin(2)
-                    .useNewPathfinder(true).updatePathRate(10).stationaryTicks(20)
-                    .stuckAction((stuckNpc, stuckNavigator) -> {
-                        Player target = climbingTarget != null ? climbingTarget : player;
-                        if (target != null && target.isOnline()) {
-                            return teleportCloser(target);
-                        }
-                        return false;
-                    });
-            if (dealer.settings().getBoolean("enforcer.open-doors", true)) {
-                try {
-                    if (!navigator.getDefaultParameters().hasExaminer(DoorExaminer.class)) {
-                        navigator.getDefaultParameters().examiner(new DoorExaminer());
-                    }
-                } catch (Throwable ignored) {
-                }
-            }
-            // A preliminary canNavigateTo check can reject a freshly spawned NPC.
-            // Let navigation run; the encounter's approach timeout handles unreachable players.
-            navigator.setTarget(player, false);
-            return true;
+            return !closed && valid() && following.controller(npc, followOptions()).follow(player);
         }
-
-        @Override public boolean teleportCloser(Player player) {
-            if (!valid() || player == null || !player.isOnline()) return false;
-            Location origin = player.getLocation();
-            Location safe = CartelEnforcer.findSafeLocation(origin, 4, 8);
-            if (safe == null) safe = CartelEnforcer.findSafeLocation(origin, 2, 5);
-            if (safe == null) safe = origin.clone();
-            Location old = entity() != null ? entity().getLocation() : null;
-            if (old != null && old.getWorld() != null) {
-                try {
-                    old.getWorld().playSound(old, Sound.ENTITY_ENDERMAN_TELEPORT, 1.0f, 1.0f);
-                } catch (Throwable ignored) {}
-            }
-            npc.teleport(safe, org.bukkit.event.player.PlayerTeleportEvent.TeleportCause.PLUGIN);
-            if (entity() != null) {
-                entity().setVelocity(new org.bukkit.util.Vector());
-                entity().setFallDistance(0);
-            }
-            if (safe != null && safe.getWorld() != null) {
-                try {
-                    safe.getWorld().playSound(safe, Sound.ENTITY_ENDERMAN_TELEPORT, 1.0f, 1.0f);
-                } catch (Throwable ignored) {}
-            }
-            climber.reset();
-            stuckTicks = 0;
-            lastLocation = safe.clone();
-            if (climbingTask != null) {
-                npc.getNavigator().cancelNavigation();
-                npc.getNavigator().setTarget(player, false);
-            } else {
-                approach(player);
-            }
-            return true;
+        public boolean teleportCloser(Player player) {
+            return !closed && valid() && following.controller(npc, followOptions()).teleportCloser(player);
         }
-
-        @Override public boolean teleport(Location location) {
-            if (!valid() || location == null) return false;
-            npc.teleport(location, org.bukkit.event.player.PlayerTeleportEvent.TeleportCause.PLUGIN);
-            if (entity() != null) {
-                entity().setVelocity(new org.bukkit.util.Vector());
-                entity().setFallDistance(0);
-            }
-            climber.reset();
-            stuckTicks = 0;
-            lastLocation = location.clone();
-            return true;
+        public boolean teleport(Location location) {
+            return !closed && valid() && following.controller(npc, followOptions()).teleport(location);
         }
-
-        public void stop() {
-            if (climbingTask != null) climbingTask.cancel();
-            climbingTask = null;
-            climber.reset();
-            climbing = false;
-            retryTicks = 0;
-            stuckTicks = 0;
-            lastLocation = null;
-            if (valid() && entity() instanceof Player body) body.setSprinting(false);
-            previousTargetLocation = null;
-            npc.getNavigator().cancelNavigation();
-        }
+        public void stop() { following.stop(npc); }
         public void destroy() {
-            stop();
+            following.release(npc);
             NPCRegistry registry = npc.getOwningRegistry();
             npc.destroy();
             registry.saveToStore();
