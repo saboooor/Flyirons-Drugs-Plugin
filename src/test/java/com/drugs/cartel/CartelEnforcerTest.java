@@ -190,6 +190,59 @@ class CartelEnforcerTest {
         verify(player, never()).damage(anyDouble(), any(org.bukkit.entity.Entity.class));
     }
 
+    @Test void immediateRejectionCountsOnceAndStartsNormalCooldown() {
+        spawnAndApproach();
+        enforcer.reject(player);
+        assertEquals(1, enforcer.refusalStreak(player));
+        verify(character).destroy();
+        verify(player).sendMessage(contains("enforcer has left"));
+        enforcer.reject(player);
+        time.addAndGet(15000);
+        enforcer.tick();
+        assertEquals(1, enforcer.refusalStreak(player));
+        verify(character, times(1)).destroy();
+        assertFalse(enforcer.spawn(player, "joint", 16, false));
+    }
+
+    @Test void canRejectWhileTheEnforcerIsStillApproaching() {
+        when(npc.getLocation()).thenReturn(new Location(world, 10, 64, 0));
+        assertTrue(enforcer.spawn(player, "joint", 16, true));
+        enforcer.reject(player);
+        assertEquals(1, enforcer.refusalStreak(player));
+        verify(character).destroy();
+    }
+
+    @Test void anotherPlayerCannotRejectYourEncounter() {
+        spawnAndApproach();
+        Player other = mock(Player.class);
+        when(other.getUniqueId()).thenReturn(UUID.randomUUID());
+        enforcer.reject(other);
+        assertEquals(0, enforcer.refusalStreak(player));
+        verify(character, never()).destroy();
+        verify(other).sendMessage(contains("no active cartel demand"));
+    }
+
+    @Test void rejectionKeepsPartialSalesAndUsesConfiguredFailureConsequences() {
+        spawnAndApproach();
+        Item item = delivery("joint");
+        try (MockedStatic<CartelDealer> prices = mockStatic(CartelDealer.class);
+             MockedStatic<DrugItemMetadata> metadata = mockStatic(DrugItemMetadata.class)) {
+            prices.when(() -> CartelDealer.price(any(), any())).thenReturn(15.0);
+            metadata.when(() -> DrugItemMetadata.getDrugId(any(ItemMeta.class))).thenReturn("joint");
+            when(dealer.sellDropped(eq(player), eq(item), eq(16), any())).thenReturn(6);
+            assertTrue(enforcer.acceptDrop(player, item));
+            config.set("enforcer.failure-damage", 2);
+            when(player.getHealth()).thenReturn(20.0);
+            enforcer.reject(player);
+            assertEquals(1, enforcer.refusalStreak(player));
+            verify(player).damage(2.0, npc);
+            verify(character).destroy();
+            verify(dealer, times(1)).sellDropped(eq(player), eq(item), eq(16), any());
+            assertFalse(enforcer.acceptDrop(player, item));
+            verify(item, never()).remove();
+        }
+    }
+
     @Test void deadlineDoesNotStartUntilTheNpcReachesThePlayer() {
         when(npc.getLocation()).thenReturn(new Location(world, 10, 64, 0));
         assertTrue(enforcer.spawn(player, "joint", 16, true));

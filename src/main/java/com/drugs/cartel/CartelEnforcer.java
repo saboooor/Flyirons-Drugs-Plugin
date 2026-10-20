@@ -394,6 +394,23 @@ public final class CartelEnforcer implements Listener {
         EnforcerGuide.open(plugin, player, encounter.drug);
     }
 
+    /** Reject only the caller's current encounter, using the same consequences as expiry. */
+    void reject(Player player) {
+        Encounter encounter = encounters.get(player.getUniqueId());
+        if (encounter == null) {
+            player.sendMessage(ChatColor.GRAY + "You have no active cartel demand to reject.");
+            return;
+        }
+        if (!encounter.npc.valid()) {
+            finish(player.getUniqueId());
+            player.sendMessage(ChatColor.GRAY + "That cartel encounter has already ended.");
+            return;
+        }
+        threaten(player, encounter);
+        finish(player.getUniqueId());
+        player.sendMessage(ChatColor.GRAY + "You rejected the cartel's demand. The enforcer has left.");
+    }
+
     boolean acceptDrop(Player player, Item item) {
         Encounter encounter = encounters.get(player.getUniqueId());
         if (encounter == null || encounter.deadline == 0 || !eligible(player) || !item.isValid()

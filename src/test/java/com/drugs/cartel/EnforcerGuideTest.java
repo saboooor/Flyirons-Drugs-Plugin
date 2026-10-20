@@ -175,6 +175,16 @@ class EnforcerGuideTest {
     }
 
     @Test
+    void dialogueOffersExplicitRejectionAndCloseRemainsHarmless() {
+        MultiActionDialog dialog = EnforcerGuide.createDialog("joint", EnforcerGuide.Page.DIALOGUE);
+        var reject = dialog.actions().stream().filter(button -> button.label().toPlainText().equals("Reject demand"))
+                .findFirst().orElseThrow();
+        assertEquals("/cartel reject", reject.action().command());
+        assertTrue(reject.lore().contains("Counts as a refusal"));
+        assertEquals("/drugs guide close", dialog.exit().action().command());
+    }
+
+    @Test
     void growingInstructionsUseConfiguredCropAndCannabisMechanics() {
         try (MockedStatic<DrugGrowing> growing = mockStatic(DrugGrowing.class)) {
             growing.when(() -> DrugGrowing.crop("coca")).thenReturn(
