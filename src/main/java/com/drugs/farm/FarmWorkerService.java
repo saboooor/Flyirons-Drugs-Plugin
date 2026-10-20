@@ -119,7 +119,8 @@ public class FarmWorkerService implements Runnable {
                         ItemStack seed = workerSeeds.get(seedIndex);
                         boolean planted = growing != null && growing.plantSeed(block, seed);
                         if (!planted) continue;
-                        workerSeeds.remove(seedIndex);
+                        if (seed.getAmount() > 1) seed.setAmount(seed.getAmount() - 1);
+                        else workerSeeds.remove(seedIndex);
                         plants++;
                         consumeQuota(workerPlantQuota, planter.getUniqueId());
                         moveWorker(planter, block.getLocation().add(0.5, 0, 0.5));

@@ -257,6 +257,8 @@ Craft one crop seed by combining wheat seeds with the starter below (shapeless).
 Right click hydrated farmland to plant. Crops use distinct plant blocks configured by `plant-block` in `growing.yml`. Right-click empty-handed to see a progress bar, percentage, remaining active growth time, and any paused conditions. Existing wheat crops convert automatically in loaded chunks; growth pauses in unloaded chunks, dry soil, or light below 9.
 Break a fully mature crop to receive two harvested ingredients and one reusable seed.
 Breaking early returns only its seed. Bone meal cannot skip growing.
+Every mature crop, including cannabis, has a 10% chance to return one extra seed or
+planting fern. This applies to player harvests and farm workers; immature plants never give bonus seeds.
 
 | Crop | Starter | Used for | Default growth time |
 | --- | --- | --- | --- |
@@ -270,8 +272,8 @@ Breaking early returns only its seed. Bone meal cannot skip growing.
 | Resin | Bone meal | Glue | 10 minutes |
 
 Cannabis uses the existing fern growing system: plant a fern, wait for a large fern,
-and harvest with shears. Mature plants yield two Cannabis Buds plus strain planting
-stock. Joint, blunt, edible, cart, and CBD recipes require buds, and bongs accept buds.
+and harvest with shears. Mature plants yield two Cannabis Buds plus one strain planting
+fern for replanting. Joint, blunt, edible, cart, and CBD recipes require buds, and bongs accept buds.
 Strain inheritance and mutations remain supported. Farm workers replant planting stock
 and deliver the harvested buds at their controller.
 

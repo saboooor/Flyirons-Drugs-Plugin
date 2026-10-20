@@ -20,6 +20,10 @@ import java.util.*;
 
 /** Timed, persistent ingredient crops. All mutations run on the server thread. */
 public final class DrugGrowing implements Listener {
+    /** Mature crops always return planting stock, with a 10% chance of one extra. */
+    static int harvestSeedCount() {
+        return java.util.concurrent.ThreadLocalRandom.current().nextDouble() < 0.10 ? 2 : 1;
+    }
     public record Crop(String id, String name, Material ingredient, Material starter, int seconds) {}
     private static final Map<String, Material> plantBlocks = new HashMap<>();
     private static final Map<String, Crop> crops = new LinkedHashMap<>();
@@ -231,7 +235,7 @@ public final class DrugGrowing implements Listener {
         plants.remove(key(block));
         clearModel(block);
         save();
-        return List.of(seed(plant.crop()), harvest(plant.crop(), null).asQuantity(2));
+        return List.of(seed(plant.crop()).asQuantity(harvestSeedCount()), harvest(plant.crop(), null).asQuantity(2));
     }
 
     public boolean plantSeed(Block block, ItemStack seed) {
@@ -290,8 +294,9 @@ public final class DrugGrowing implements Listener {
         event.setExpToDrop(0);
         if (matchesPlant(root, plant) && event.getPlayer().getGameMode() != GameMode.CREATIVE) {
             Block block = root;
-            block.getWorld().dropItemNaturally(block.getLocation(), seed(plant.crop()));
-            if (plant.elapsed() >= crops.get(plant.crop()).seconds())
+            boolean mature = plant.elapsed() >= crops.get(plant.crop()).seconds();
+            block.getWorld().dropItemNaturally(block.getLocation(), seed(plant.crop()).asQuantity(mature ? harvestSeedCount() : 1));
+            if (mature)
                 block.getWorld().dropItemNaturally(block.getLocation(), harvest(plant.crop(), null).asQuantity(2));
             else event.getPlayer().sendMessage("§eThis crop was not mature. Only its seed was recovered.");
         }

@@ -150,12 +150,10 @@ public class CannabisPlantListener implements Listener {
 
         List<ItemStack> drops = new ArrayList<>();
         if (usingShears) {
-            int dropAmount = rootBlock.getType() == Material.LARGE_FERN ? 2 : 1;
             String childStrain = rootBlock.getType() == Material.LARGE_FERN
                     ? StrainConfigLoader.rollChildStrain(parentStrain) : parentStrain;
-            for (int i = 0; i < dropAmount; i++) {
-                drops.add(createStrainFern(childStrain));
-            }
+            drops.add(createStrainFern(childStrain).asQuantity(
+                    rootBlock.getType() == Material.LARGE_FERN ? DrugGrowing.harvestSeedCount() : 1));
         }
 
         if (rootBlock.getType() == Material.LARGE_FERN && usingShears) {
