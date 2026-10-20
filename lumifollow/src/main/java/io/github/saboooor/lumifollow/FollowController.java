@@ -133,8 +133,8 @@ public final class FollowController implements AutoCloseable {
         Location old = entity().getLocation();
         if (!teleport(safe)) return false;
         if (options.teleportSound()) {
-            old.getWorld().playSound(old, Sound.ENTITY_ENDERMAN_TELEPORT, 1F, 1F);
-            safe.getWorld().playSound(safe, Sound.ENTITY_ENDERMAN_TELEPORT, 1F, 1F);
+            old.getWorld().playSound(old, "minecraft:entity.enderman.teleport", 1F, 1F);
+            safe.getWorld().playSound(safe, "minecraft:entity.enderman.teleport", 1F, 1F);
         }
         if (target != null) npc.getNavigator().setTarget(target, false);
         return true;

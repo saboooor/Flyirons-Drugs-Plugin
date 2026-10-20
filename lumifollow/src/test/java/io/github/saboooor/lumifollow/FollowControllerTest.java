@@ -155,7 +155,8 @@ class FollowControllerTest {
         FollowController session = service.follow(npc, target, FollowOptions.defaults());
         org.bukkit.event.player.PlayerTeleportEvent teleport = mock(org.bukkit.event.player.PlayerTeleportEvent.class);
         when(teleport.getPlayer()).thenReturn(target);
-        when(teleport.getTo()).thenReturn(target.getLocation());
+        Location destination = target.getLocation();
+        when(teleport.getTo()).thenReturn(destination);
         org.bukkit.event.player.PlayerChangedWorldEvent worldChange = mock(org.bukkit.event.player.PlayerChangedWorldEvent.class);
         when(worldChange.getPlayer()).thenReturn(target);
         service.onTeleport(teleport);
