@@ -52,6 +52,18 @@ public final class CartelDealer implements Listener, CommandExecutor, TabComplet
 
     @Override
     public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
+        if (args.length > 0 && args[0].equalsIgnoreCase("reject")) {
+            if (args.length != 1) {
+                sender.sendMessage("Usage: /cartel reject");
+            } else if (!(sender instanceof Player player)) {
+                sender.sendMessage("Only players can reject their cartel demand.");
+            } else if (enforcer != null) {
+                enforcer.reject(player);
+            } else {
+                sender.sendMessage(ChatColor.GRAY + "You have no active cartel demand to reject.");
+            }
+            return true;
+        }
         if (!sender.hasPermission("drugs.cartel.admin")) {
             sender.sendMessage(ChatColor.RED + "You cannot manage cartel dealers.");
             return true;
@@ -93,7 +105,10 @@ public final class CartelDealer implements Listener, CommandExecutor, TabComplet
 
     @Override
     public List<String> onTabComplete(CommandSender sender, Command command, String alias, String[] args) {
-        if (!sender.hasPermission("drugs.cartel.admin")) return List.of();
+        if (!sender.hasPermission("drugs.cartel.admin")) {
+            return sender instanceof Player && args.length == 1 && "reject".startsWith(args[0].toLowerCase(Locale.ROOT))
+                    ? List.of("reject") : List.of();
+        }
         if (args.length > 1 && args[0].equalsIgnoreCase("enforcer")) {
             List<String> options = switch (args.length) {
                 case 2 -> Bukkit.getOnlinePlayers().stream().map(Player::getName).toList();
@@ -105,7 +120,7 @@ public final class CartelDealer implements Listener, CommandExecutor, TabComplet
                     .startsWith(args[args.length - 1].toLowerCase(Locale.ROOT))).toList();
         }
         if (args.length != 1) return List.of();
-        return List.of("create", "remove", "reload", "enforcer").stream()
+        return List.of("create", "remove", "reload", "enforcer", "reject").stream()
                 .filter(s -> s.startsWith(args[0].toLowerCase(Locale.ROOT))).toList();
     }
 

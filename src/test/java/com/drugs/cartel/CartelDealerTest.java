@@ -46,6 +46,34 @@ class CartelDealerTest {
 
     @AfterEach void cleanup() { registry.close(); }
 
+    @Test void ordinaryPlayersCanRejectButCannotManageCartelNpcs() {
+        CartelDealer dealer = new CartelDealer(plugin);
+        CartelEnforcer enforcer = mock(CartelEnforcer.class);
+        dealer.setEnforcer(enforcer);
+        Player player = mock(Player.class);
+        org.bukkit.command.Command command = mock(org.bukkit.command.Command.class);
+        assertTrue(dealer.onCommand(player, command, "cartel", new String[]{"reject"}));
+        verify(enforcer).reject(player);
+        CartelNpcs npcs = mock(CartelNpcs.class);
+        dealer.setNpcs(npcs);
+        for (String action : java.util.List.of("create", "remove", "reload", "enforcer")) {
+            assertTrue(dealer.onCommand(player, command, "cartel", new String[]{action}));
+        }
+        verifyNoInteractions(npcs);
+        verify(enforcer, never()).onCommand(any(), any());
+        assertEquals(java.util.List.of("reject"), dealer.onTabComplete(player, command, "cartel", new String[]{"r"}));
+    }
+
+    @Test void malformedOrConsoleRejectionDoesNotTouchEncounters() {
+        CartelDealer dealer = new CartelDealer(plugin);
+        CartelEnforcer enforcer = mock(CartelEnforcer.class);
+        dealer.setEnforcer(enforcer);
+        org.bukkit.command.Command command = mock(org.bukkit.command.Command.class);
+        dealer.onCommand(mock(Player.class), command, "cartel", new String[]{"reject", "OtherPlayer"});
+        dealer.onCommand(mock(org.bukkit.command.ConsoleCommandSender.class), command, "cartel", new String[]{"reject"});
+        verifyNoInteractions(enforcer);
+    }
+
     private ItemStack drug(String id, String type, String strain) {
         ItemStack item = mock(ItemStack.class);
         when(item.hasItemMeta()).thenReturn(true);

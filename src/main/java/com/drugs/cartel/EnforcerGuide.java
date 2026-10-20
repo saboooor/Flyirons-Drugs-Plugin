@@ -21,7 +21,7 @@ import org.bukkit.inventory.meta.ItemMeta;
 import java.util.List;
 import java.util.Map;
 
-/** Read-only dialogue and recipe pages: dialogs for dialogue/growing, inventory GUI for recipe preview. */
+/** Enforcer dialogue actions and guides; recipes use a read-only inventory preview. */
 public final class EnforcerGuide implements Listener {
     public enum Page { DIALOGUE, RECIPE, GROWING }
 
@@ -68,11 +68,13 @@ public final class EnforcerGuide implements Listener {
         String message = "Enforcer: I need " + drug + ".\n"
                 + "Throw the goods near me to deliver them.\n"
                 + "Need help? Choose a guide below.\n"
-                + "Your delivery deadline keeps running.";
+                + "Your delivery deadline keeps running. Rejecting counts as a refusal.";
         DialogBase base = Dialogs.base("Cartel enforcer", message);
         List<ActionButton> actions = List.of(
                 Dialogs.button("Crafting recipe", "/drugs guide " + drug + " recipe", false, Icon.CRAFTING_TABLE, "View the crafting recipe for " + drug + "."),
-                Dialogs.button("How to grow", "/drugs guide " + drug + " growing", false, Icon.SEEDS, "Learn how to grow the required ingredient.")
+                Dialogs.button("How to grow", "/drugs guide " + drug + " growing", false, Icon.SEEDS, "Learn how to grow the required ingredient."),
+                Dialogs.button("Reject demand", "/cartel reject", false, Icon.CLOSE,
+                        "End this encounter now. Counts as a refusal, with the same consequences as letting time run out.")
         );
         return Dialogs.menu(base, actions, Dialogs.button("Close", "/drugs guide close", false, Icon.CLOSE, "Close this guide."));
     }
