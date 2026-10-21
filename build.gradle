@@ -1,0 +1,44 @@
+plugins {
+    id 'base'
+    id 'com.gradleup.shadow' version '9.6.1' apply false
+}
+
+subprojects {
+    apply plugin: 'java-library'
+
+    repositories {
+        mavenCentral()
+        maven { url = 'https://maven.citizensnpcs.co/repo' }
+        maven { url = 'https://repo.papermc.io/repository/maven-public/' }
+        maven { url = 'https://jitpack.io' }
+        maven { url = 'https://repo.extendedclip.com/content/repositories/placeholderapi/' }
+    }
+
+    java {
+        toolchain.languageVersion = JavaLanguageVersion.of(21)
+    }
+    tasks.withType(JavaCompile).configureEach {
+        options.encoding = 'UTF-8'
+        options.release = 21
+    }
+
+    configurations {
+        mockitoAgent
+        testImplementation.extendsFrom compileOnly
+    }
+    dependencies {
+        compileOnly('net.citizensnpcs:citizens-main:2.0.35-SNAPSHOT') { transitive = false }
+        compileOnly 'io.papermc.paper:paper-api:1.21.10-R0.1-SNAPSHOT'
+        testImplementation 'org.junit.jupiter:junit-jupiter:5.11.4'
+        testImplementation 'org.mockito:mockito-core:5.23.0'
+        testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+        mockitoAgent('org.mockito:mockito-core:5.23.0') { transitive = false }
+    }
+    tasks.withType(Test).configureEach {
+        useJUnitPlatform()
+        jvmArgs "-javaagent:${configurations.mockitoAgent.singleFile}"
+    }
+}
+
+tasks.named('build') { dependsOn subprojects.collect { it.tasks.named('build') } }
+tasks.named('clean') { dependsOn subprojects.collect { it.tasks.named('clean') } }

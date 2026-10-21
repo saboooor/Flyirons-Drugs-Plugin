@@ -10,17 +10,24 @@ The library is shaded into the consuming plugin; it is not a server plugin to in
 From the repository root:
 
 ```sh
-mvn clean install
+./gradlew clean build
 ```
 
-This builds the independent library at `lumifollow/target/lumifollow-1.0.0.jar`
-and the plugin at `lumidrugs/target/LumiDrugs.jar`. To build/install only the library:
+This builds the independent library at `lumifollow/build/libs/lumifollow-1.0.0.jar`
+and the plugin at `lumidrugs/build/libs/LumiDrugs.jar`. To build/install only the library:
 
 ```sh
-mvn -f lumifollow/pom.xml clean install
+./gradlew :lumifollow:build :lumifollow:publishToMavenLocal
 ```
 
-After installing it into your Maven repository, add to your quest plugin:
+After `:lumifollow:publishToMavenLocal`, a Gradle consumer can use:
+
+```groovy
+repositories { mavenLocal() }
+dependencies { implementation 'io.github.saboooor:lumifollow:1.0.0' }
+```
+
+Keep Paper and Citizens as `compileOnly` dependencies in the consumer. Maven consumers can use:
 
 ```xml
 <dependency>
@@ -31,10 +38,11 @@ After installing it into your Maven repository, add to your quest plugin:
 ```
 
 These coordinates are not published to Maven Central. Each build machine must install the
-library first, or you can publish this standalone Maven module to your own Maven repository.
-The `lumifollow` directory can be built independently of the rest of this repository.
+library first, or you can publish this Gradle module to your own Maven repository.
+Build the library alone with `./gradlew :lumifollow:build` from the repository root.
+Use `gradlew.bat` instead of `./gradlew` on Windows.
 
-Use Maven Shade to bundle it and relocate `io.github.saboooor.lumifollow` to a private package
+Use Gradle Shadow (or Maven Shade in a Maven consumer) to bundle it and relocate `io.github.saboooor.lumifollow` to a private package
 such as `your.plugin.internal.lumifollow`. Keep Paper and Citizens as `provided` dependencies.
 Declare `depend: [Citizens]` in `plugin.yml`, or soft-depend on Citizens and instantiate this
 library only when Citizens is available. LumiDrugs demonstrates the latter arrangement.

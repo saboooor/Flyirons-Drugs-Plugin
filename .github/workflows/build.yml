@@ -11,11 +11,11 @@ jobs:
         with:
           distribution: temurin
           java-version: '21'
-          cache: maven
-      - run: mvn --batch-mode --no-transfer-progress clean verify
+      - uses: gradle/actions/setup-gradle@v4
+      - run: ./gradlew --no-daemon clean build
       - uses: actions/upload-artifact@v4
         with:
           name: LumiDrugs-and-LumiFollow
           path: |
-            lumidrugs/target/LumiDrugs.jar
-            lumifollow/target/lumifollow-1.0.0.jar
+            lumidrugs/build/libs/LumiDrugs.jar
+            lumifollow/build/libs/lumifollow-1.0.0.jar

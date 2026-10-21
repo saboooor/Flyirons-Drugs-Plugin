@@ -1,0 +1,37 @@
+plugins {
+    id 'com.gradleup.shadow'
+}
+
+group = 'com.drugs'
+version = '2.0.0'
+
+sourceSets {
+    main {
+        java.srcDirs = [rootProject.file('src/main/java')]
+        resources.srcDirs = [rootProject.file('src/main/resources')]
+    }
+    test {
+        java.srcDirs = [rootProject.file('src/test/java')]
+        resources.srcDirs = [rootProject.file('src/test/resources')]
+    }
+}
+
+dependencies {
+    implementation project(':lumifollow')
+    compileOnly 'com.github.MilkBowl:VaultAPI:1.7.1'
+    compileOnly 'me.clip:placeholderapi:2.11.5'
+}
+
+tasks.named('processResources') {
+    inputs.property('version', project.version)
+    filesMatching('plugin.yml') {
+        filter { line -> line.replace('${project.version}', project.version.toString()) }
+    }
+}
+
+tasks.named('jar') { archiveClassifier = 'plain' }
+tasks.named('shadowJar') {
+    archiveFileName = 'LumiDrugs.jar'
+    relocate 'io.github.saboooor.lumifollow', 'com.drugs.internal.lumifollow'
+}
+tasks.named('assemble') { dependsOn tasks.named('shadowJar') }

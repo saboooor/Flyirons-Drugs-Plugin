@@ -1,0 +1,25 @@
+plugins {
+    id 'maven-publish'
+}
+
+group = 'io.github.saboooor'
+version = '1.0.0'
+description = 'Reusable Citizens player pursuit, climbing, doors and teleport recovery.'
+
+publishing {
+    publications {
+        mavenJava(MavenPublication) {
+            from components.java
+            pom {
+                name = 'LumiFollow'
+                description = project.description
+                licenses {
+                    license {
+                        name = 'GNU General Public License v3.0'
+                        url = 'https://www.gnu.org/licenses/gpl-3.0.html'
+                    }
+                }
+            }
+        }
+    }
+}
