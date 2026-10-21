@@ -24,6 +24,7 @@ import com.drugs.farm.FarmItems;
  * Prevents interaction with both drug menu and recipe viewer.
  */
 public class DrugMenuListener implements Listener {
+    private final java.util.Set<java.util.UUID> openingGrowingGuide = new java.util.HashSet<>();
 
     /**
      * Detect clicks inside the Drugs Menu or Recipe GUI.
@@ -43,8 +44,22 @@ public class DrugMenuListener implements Listener {
 
         if (clicked == null || clicked.getType() == Material.AIR || event.getRawSlot() >= inv.getSize()) return;
 
-        // Only handle logic for drug menu clicks
-        if (!title.startsWith("Drugs Menu")) return;
+        if (title.startsWith("Recipe: ")) {
+            // Only the three ingredient columns are interactive; the result is not an ingredient.
+            int slot = event.getRawSlot();
+            if (slot < 0 || slot % 9 < 1 || slot % 9 > 3) return;
+            String crop = GrowingGuide.cropFromIngredient(clicked);
+            if (crop != null) {
+                String recipe = title.substring("Recipe: ".length());
+                Bukkit.getScheduler().runTask(DrugsV2.getInstance(), () -> {
+                    openingGrowingGuide.add(player.getUniqueId());
+                    player.closeInventory();
+                    openingGrowingGuide.remove(player.getUniqueId());
+                    GrowingGuide.open(player, crop, recipe);
+                });
+            }
+            return;
+        }
 
         String name = clicked.getItemMeta() != null ? ChatColor.stripColor(clicked.getItemMeta().getDisplayName()) : "";
 
@@ -96,6 +111,7 @@ public class DrugMenuListener implements Listener {
         String title = ChatColor.stripColor(event.getView().getTitle());
         if (title.startsWith("Recipe: ")) {
             Player player = (Player) event.getPlayer();
+            if (openingGrowingGuide.contains(player.getUniqueId())) return;
             Bukkit.getScheduler().runTaskLater(DrugsV2.getInstance(), () -> {
                 DrugMenuGUI.open(player, 0);
             }, 1L); // Delay to prevent recursion

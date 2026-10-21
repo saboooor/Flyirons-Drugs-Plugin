@@ -30,15 +30,19 @@ public class DrugRecipeViewer {
                 ItemStack ingredient = choice.getItemStack();
                 if (crop != null && ingredient.getType() == DrugGrowing.material(crop))
                     ingredient = DrugGrowing.harvest(crop, "cannabis".equals(crop) ? DrugItemMetadata.DEFAULT_STRAIN_ID : null);
+                if (GrowingGuide.cropFromIngredient(ingredient) != null) {
+                    ingredient = ingredient.clone();
+                    var meta = ingredient.getItemMeta();
+                    var lore = meta.hasLore() ? new java.util.ArrayList<>(meta.getLore()) : new java.util.ArrayList<String>();
+                    lore.add("§eClick to learn how to grow this ingredient.");
+                    meta.setLore(lore);
+                    ingredient.setItemMeta(meta);
+                }
                 gui.setItem(row * 9 + column + 1, ingredient);
             }
         }
         gui.setItem(15, recipe.getResult());
         player.openInventory(gui);
-        if (crop != null) {
-            if ("cannabis".equals(crop)) player.sendMessage("§aGrow ferns into large ferns, then harvest with shears for Cannabis Buds.");
-            else player.sendMessage("§aCraft " + crop + " seeds using wheat seeds + " + DrugGrowing.material(crop).name().toLowerCase().replace('_', ' ')
-                + ". Plant on hydrated farmland and wait for full growth.");
-        }
+
     }
 }

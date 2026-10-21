@@ -5,6 +5,7 @@ import com.drugs.config.MechanicsConfig;
 import com.drugs.growing.DrugGrowing;
 import com.drugs.ui.DialogView;
 import com.drugs.ui.Dialogs;
+import com.drugs.ui.GrowingGuide;
 
 import com.drugs.ui.DialogView.*;
 import org.bukkit.Bukkit;
@@ -134,7 +135,9 @@ public final class EnforcerGuide implements Listener {
                 "Wait for it to become a large fern (" + DrugGrowing.growthSeconds("cannabis") + "s of active growth). Right-click empty-handed to check progress.",
                 "Bone meal cannot speed up cannabis growth.",
                 "Break the mature large fern using shears.",
-                "Collect the Cannabis Buds and use them in the recipe.");
+                "Collect 2 Cannabis Buds and a planting fern. Mature plants have a 10% chance of an extra fern.",
+                "Replant the fern; its strain may mutate. Use buds, not planting ferns, in recipes.",
+                "If harvesting early, use shears to recover planting stock. Without shears, no buds or planting stock are returned.");
         DrugGrowing.Crop definition = DrugGrowing.crop(crop);
         if (definition == null) return List.of("Growing information is currently unavailable.");
         String starter = definition.starter().name().toLowerCase(java.util.Locale.ROOT).replace('_', ' ');
@@ -145,7 +148,8 @@ public final class EnforcerGuide implements Listener {
                 "Wait " + definition.seconds() + " seconds of active growth. Right-click empty-handed to check progress.",
                 "Bone meal cannot speed up this crop.",
                 "Break the mature crop in Survival to get 2 " + definition.name() + " and a seed.",
-                "Use the harvested " + definition.name() + " in the recipe.");
+                "Mature crops have a 10% chance of one extra seed. Breaking early returns only the seed.",
+                "Replant the seed. Use the custom harvested " + definition.name() + ", not ordinary materials or seeds, in the recipe.");
     }
 
     private static ItemStack icon(Material material, String name, String... lore) {
@@ -177,7 +181,8 @@ public final class EnforcerGuide implements Listener {
             });
             return;
         }
-        if (slot == 49) {
+        if (slot == 49 || (slot >= 10 && slot <= 30 && slot % 9 >= 1 && slot % 9 <= 3
+                && GrowingGuide.cropFromIngredient(event.getCurrentItem()) != null)) {
             plugin.getServer().getScheduler().runTask(plugin, () -> {
                 player.closeInventory();
                 openPage(plugin, player, menu.drug, Page.GROWING);

@@ -251,7 +251,7 @@ If PlaceholderAPI is installed, this plugin registers `%drugs_...%` placeholders
 Drug recipes require custom harvested ingredients. Ordinary flowers, minerals, vines,
 ferns, and planting stock cannot substitute for a harvest, including in automatic crafters.
 Existing `recipes.yml` files receive the requirement at registration, without being overwritten.
-Use `/drugs growing` for instructions or click a drug in `/drugs` to view its current recipe.
+Use `/drugs growing` to open the crop guide dialog, or `/drugs growing <crop>` for a specific crop. Click a drug in `/drugs` to view its current recipe, then click a harvested ingredient to open its growing dialog. The guide includes a Back to recipe button.
 
 Craft one crop seed by combining wheat seeds with the starter below (shapeless).
 Right click hydrated farmland to plant. Crops use distinct plant blocks configured by `plant-block` in `growing.yml`. Right-click empty-handed to see a progress bar, percentage, remaining active growth time, and any paused conditions. Existing wheat crops convert automatically in loaded chunks; growth pauses in unloaded chunks, dry soil, or light below 9.

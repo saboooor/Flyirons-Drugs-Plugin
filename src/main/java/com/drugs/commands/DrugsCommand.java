@@ -110,16 +110,23 @@ public class DrugsCommand implements CommandExecutor {
             return true;
         }
 
+        if (args[0].equalsIgnoreCase("recipe") && args.length == 2) {
+            if (sender instanceof Player player) com.drugs.ui.DrugRecipeViewer.openRecipe(player, args[1]);
+            return true;
+        }
+
         // /drugs growing
         if (args[0].equalsIgnoreCase("growing")) {
-            sender.sendMessage("§aGrow and harvest ingredients before crafting drugs.");
-            sender.sendMessage("§7Craft crop seeds with wheat seeds + the ingredient listed below:");
-            for (String crop : DrugGrowing.cropIds()) {
-                sender.sendMessage("§e" + crop + "§7: " + DrugGrowing.material(crop).name().toLowerCase().replace('_', ' '));
+            if (!(sender instanceof Player player)) {
+                sender.sendMessage("Only players can open the growing guide.");
+                return true;
             }
-            sender.sendMessage("§7Right click hydrated farmland with seeds. Keep crops lit and wait until fully grown.");
-            sender.sendMessage("§7Break mature crops for ingredients and a reusable seed. Early harvest returns only the seed.");
-            sender.sendMessage("§7Cannabis: plant ferns on hydrated farmland with light level 9+, wait for large ferns, and harvest with shears for buds and new plants.");
+            String crop = args.length > 1 ? args[1].toLowerCase(java.util.Locale.ROOT) : null;
+            if (crop != null && !DrugGrowing.cropIds().contains(crop)) {
+                sender.sendMessage("§cUnknown crop. Use /drugs growing to choose a crop.");
+                return true;
+            }
+            com.drugs.ui.GrowingGuide.open(player, crop, null);
             return true;
         }
 
