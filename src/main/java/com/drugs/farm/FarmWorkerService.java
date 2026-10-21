@@ -146,7 +146,9 @@ public class FarmWorkerService implements Runnable {
                 && output.getWorld().isChunkLoaded(output.getBlockX() >> 4, output.getBlockZ() >> 4)
                 && output.getBlock().getState() instanceof org.bukkit.block.Chest chest) {
             for (ItemStack leftover : chest.getInventory().addItem(item).values()) {
-                farm.getControllerLocation().getWorld().dropItemNaturally(farm.getControllerLocation(), leftover);
+                if (farm.shouldDropOverflowItems()) {
+                    farm.getControllerLocation().getWorld().dropItemNaturally(farm.getControllerLocation(), leftover);
+                }
             }
             return;
         }

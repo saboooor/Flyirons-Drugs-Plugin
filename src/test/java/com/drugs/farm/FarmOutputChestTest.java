@@ -33,6 +33,11 @@ class FarmOutputChestTest {
         leftovers.put(0, overflow);
         FarmWorkerService.storeOutput(farm, harvest);
         verify(world).dropItemNaturally(controller, overflow);
+        clearInvocations(world);
+        farm.setDropOverflowItems(false);
+        FarmWorkerService.storeOutput(farm, harvest);
+        verify(world, never()).dropItemNaturally(any(), any());
+        verify(inventory, times(3)).addItem(harvest);
     }
 
     @Test void unloadedChestFallsBackWithoutLoadingChunk() {

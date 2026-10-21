@@ -190,6 +190,11 @@ public class FarmControllerListener implements Listener {
                 selectingChest.put(player.getUniqueId(), farmId);
                 player.sendMessage(ChatColor.AQUA + "Right-click a chest to set this farm's output chest.");
             }
+            case "toggle-overflow" -> {
+                farm.setDropOverflowItems(!farm.shouldDropOverflowItems());
+                manager.save();
+                openControllerDialog(player, farm);
+            }
             case "clear-chest" -> {
                 selectingChest.remove(player.getUniqueId());
                 farm.setOutputChest(null);
@@ -322,6 +327,7 @@ public class FarmControllerListener implements Listener {
                         Dialogs.button("Get Work Contract (1 emerald)", "/drugs farm contract", false, Icon.SHARED, "Assign a villager to this farm. Maximum 5 workers."),
                         Dialogs.button("Set Output Chest", "/drugs farm chest", false, Icon.RETRIEVE, "Then right-click a chest to store harvested crops and unused seeds."),
                         Dialogs.button("Clear Output Chest", "/drugs farm clear-chest", false, Icon.CLOSE, "Drop farm output at the controller again."),
+                        Dialogs.button("Drop Chest Overflow: " + (farm.shouldDropOverflowItems() ? "ON" : "OFF"), "/drugs farm toggle-overflow", false, Icon.RETRIEVE, "Toggle dropping items that do not fit in the chest. OFF discards overflow."),
                         Dialogs.button("Refresh Farm Info", "/drugs farm info", false, Icon.BOOK)),
                 Dialogs.button("Close", "/drugs farm close", false, Icon.CLOSE)));
     }

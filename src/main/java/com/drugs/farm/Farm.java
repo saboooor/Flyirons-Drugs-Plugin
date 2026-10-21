@@ -16,6 +16,10 @@ public class Farm {
     private final Location controllerLocation;
     private UUID worldId;
     private Location outputChest;
+    private boolean dropOverflowItems = true;
+
+    public boolean shouldDropOverflowItems() { return dropOverflowItems; }
+    public void setDropOverflowItems(boolean dropOverflowItems) { this.dropOverflowItems = dropOverflowItems; }
 
     public Location getOutputChest() { return outputChest == null ? null : outputChest.clone(); }
     public void setOutputChest(Location location) { outputChest = location == null ? null : location.clone(); }

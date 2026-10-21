@@ -25,6 +25,7 @@ class PackedFarmTest {
             var farm = manager.createFarm(new Location(world, 10, 64, 10));
             farm.setRegion(world, new Location(world, 11, 64, 11), new Location(world, 15, 66, 15));
             farm.setEnabled(false);
+            farm.setDropOverflowItems(false);
             farm.setOutputChest(new Location(world, 20, 64, 20));
             var worker = UUID.randomUUID();
             farm.getAssignedVillagers().add(worker);
@@ -47,6 +48,8 @@ class PackedFarmTest {
             assertEquals(72, restored.getMaxY());
             assertEquals(105, restored.getMaxZ());
             assertFalse(restored.isEnabled());
+            assertFalse(restored.shouldDropOverflowItems());
+            assertFalse(manager.getByFarmId(farm.getFarmId()).shouldDropOverflowItems());
             assertEquals(new Location(world, 20, 64, 20), restored.getOutputChest());
             assertTrue(restored.getAssignedVillagers().contains(worker));
             assertTrue(manager.restoreFarm(restored));

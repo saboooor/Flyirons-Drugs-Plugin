@@ -167,6 +167,7 @@ public class FarmManager {
             yaml.set(base + ".world", farm.getWorldId() == null ? null : farm.getWorldId().toString());
             yaml.set(base + ".output-chest", serializeLocation(farm.getOutputChest()));
             yaml.set(base + ".enabled", farm.isEnabled());
+            yaml.set(base + ".drop-overflow-items", farm.shouldDropOverflowItems());
             yaml.set(base + ".packed", packed.contains(farm.getFarmId()));
             yaml.set(base + ".region-defined", farm.hasRegion());
             yaml.set(base + ".region.minX", farm.getMinX());
@@ -213,6 +214,7 @@ public class FarmManager {
             Farm farm = new Farm(farmId, controller);
             farm.setOutputChest(deserializeLocation(yaml.getString(base + ".output-chest")));
             farm.setEnabled(yaml.getBoolean(base + ".enabled", true));
+            farm.setDropOverflowItems(yaml.getBoolean(base + ".drop-overflow-items", true));
             String worldRaw = yaml.getString(base + ".world");
             World world = worldRaw != null ? Bukkit.getWorld(UUID.fromString(worldRaw)) : controller.getWorld();
             if (world != null && yaml.getBoolean(base + ".region-defined", true)) {

@@ -41,6 +41,7 @@ public final class FarmItems {
         var data = new YamlConfiguration();
         data.set("id", farm.getFarmId());
         data.set("enabled", farm.isEnabled());
+        data.set("drop-overflow-items", farm.shouldDropOverflowItems());
         data.set("output-chest", FarmManager.serializeLocation(farm.getOutputChest()));
         data.set("region", farm.hasRegion());
         Location origin = farm.getControllerLocation();
@@ -68,6 +69,7 @@ public final class FarmItems {
             if (data.getBoolean("region", true)) farm.setRegion(location.getWorld(), first, second);
             farm.setOutputChest(FarmManager.deserializeLocation(data.getString("output-chest")));
             farm.setEnabled(data.getBoolean("enabled", true));
+            farm.setDropOverflowItems(data.getBoolean("drop-overflow-items", true));
             for (String worker : data.getStringList("workers")) {
                 if (farm.getAssignedVillagers().size() >= Farm.MAX_WORKERS) throw new IllegalArgumentException();
                 farm.getAssignedVillagers().add(UUID.fromString(worker));
